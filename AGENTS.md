@@ -64,3 +64,38 @@ cmake --build build
     --http 127.0.0.1:11008 --dht-port 0
 easytier-core -n <net> -k <secret> -p http://127.0.0.1:11008/endpoint
 ```
+
+### Native Windows (MinGW-w64)
+
+Use the MSYS2 **UCRT64** terminal, not the MSYS compiler. The resulting
+executables use Winsock and native Windows process APIs and do not require
+`msys-2.0.dll`. OpenSSL and Argon2 must come from the same native toolchain.
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,openssl,argon2}
+git submodule update --init --recursive
+cmake -S . -B build-win32 -G Ninja
+cmake --build build-win32
+ctest --test-dir build-win32 --output-on-failure
+./build-win32/easytier-peerdisc.exe --network-name <net> --secret <secret> \
+    --easytier-cli-path 'C:\Program Files\EasyTier\easytier-cli.exe'
+```
+
+For Linux cross-compilation, use `cmake/mingw-w64.cmake`. Set
+`CMAKE_FIND_ROOT_PATH` to include the Windows dependency installation prefix,
+`OPENSSL_ROOT_DIR` to that prefix, and `PKG_CONFIG_LIBDIR` to its pkg-config
+directory. Never let pkg-config select host Linux libraries. Set
+`CMAKE_CROSSCOMPILING_EMULATOR=wine` to run the portable CTest suites with Wine;
+initialize the Wine prefix before running tests.
+
+Windows subprocesses are launched directly without a shell, with explicit
+standard-handle inheritance and stderr redirected to `NUL`. Socket handles
+retain their native width; the unmodified DHT library receives integer tokens
+mapped back to IPv4/IPv6 sockets in `dht_sendto`. DHT random bytes use OpenSSL
+`RAND_bytes` on every platform.
+
+This does not change the existing Windows state-storage limitations: custom
+state directories need existing parents, and narrow path inputs use the system
+code page. Full Unicode paths and Windows console-close handling remain separate
+work. The POSIX-only path suite is supplemented by portable platform tests for
+subprocess arguments/status, IPv4/IPv6 DHT sends, HTTP/event-loop sockets, and RNG.

@@ -6,7 +6,6 @@
 #include "easytier_rpc.h"
 #include "endpoint.h"
 
-#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

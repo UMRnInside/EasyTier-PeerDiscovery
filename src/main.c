@@ -35,7 +35,7 @@ static int run(const peerdisc_args_t *args)
     infohash_t udp_topic;
     infohash_t quic_topic;
     uint8_t secret_hash[SECRET_HASH_LEN];
-    int http_fd;
+    net_socket_t http_fd;
     size_t i;
     int rc;
 
@@ -127,7 +127,12 @@ int main(int argc, char **argv)
     if(ret == 2)
         return EXIT_SUCCESS;
 
+    if(net_init() != 0) {
+        args_free(&args);
+        return EXIT_FAILURE;
+    }
     ret = run(&args);
+    net_cleanup();
     args_free(&args);
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

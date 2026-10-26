@@ -24,6 +24,7 @@ add_executable(easytier-peerdisc
     src/main.c
     src/args.c
     src/dht_runtime.c
+    src/dht_state.c
     src/infohash.c
     src/discovery.c
     src/httpd.c
@@ -43,6 +44,9 @@ target_include_directories(easytier-peerdisc PRIVATE
 )
 
 target_link_libraries(easytier-peerdisc PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgConfig::ARGON2)
+if(WIN32)
+    target_link_libraries(easytier-peerdisc PRIVATE shell32 ole32 uuid)
+endif()
 
 target_include_directories(et-secret-hash PRIVATE
     ${CMAKE_SOURCE_DIR}/include

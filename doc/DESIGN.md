@@ -77,6 +77,26 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - Announce interval defaults to 15 minutes (keeps the entry refreshed at least
   twice within Mainline's ~30-min–2-hour reaping window).
 
+## DHT state persistence
+
+The DHT node ID and up to 256 good IPv4 plus 256 good IPv6 routing nodes are
+stored in `dht-state.bin`. The state is loaded at startup, saved every five
+minutes, and saved again during orderly shutdown. Discovered EasyTier peers are
+not persisted because BEP5 peer records may become stale. At most 32 saved
+nodes per address family are pinged during startup to avoid a bootstrap burst.
+
+Default state directories:
+
+- Linux and other POSIX systems: `$XDG_STATE_HOME/easytier-peerdiscovery` when
+  `XDG_STATE_HOME` is an absolute path; otherwise
+  `~/.local/state/easytier-peerdiscovery`.
+- Win32: `FOLDERID_LocalAppDataLow\easytier-peerdiscovery`, resolved with the
+  Windows Known Folder API.
+
+Writes use a temporary file followed by an atomic replacement. On POSIX, the
+state file mode is restricted to `0600` and newly created directories use
+`0700`.
+
 ## Directory layout
 
 ```
@@ -86,6 +106,7 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 src/
   main.c             # entry: init, event loop (select + dht_periodic), HTTP server
   dht_runtime.c/h    # dht_init / dht_periodic driver, dual-stack sockets, bootstrap
+  dht_state.c/h      # persistent node ID and routing-node state
   infohash.c/h       # infohash derivation (KDF + SHA-256)
   discovery.c/h      # periodic dht_search + on-demand announce decision + callback
   httpd.c/h          # local HTTP `/endpoint` service

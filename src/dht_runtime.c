@@ -6,6 +6,7 @@
 
 #include "dht_runtime.h"
 
+#include "dht_state.h"
 #include "httpd.h"
 
 #include <errno.h>
@@ -22,11 +23,28 @@
 #include <unistd.h>
 
 #define DHT_BUFSIZE 4096
+#define DHT_STATE_SAVE_INTERVAL 300
+#define DHT_STATE_RESTORE_NODES 32
 
 static int g_socket = -1;
 static int g_socket6 = -1;
 static unsigned char g_node_id[20];
 static volatile sig_atomic_t g_stop = 0;
+static time_t g_last_state_save;
+
+static int save_dht_state(void)
+{
+    dht_state_t state;
+
+    memset(&state, 0, sizeof(state));
+    memcpy(state.node_id, g_node_id, sizeof(g_node_id));
+    state.has_node_id = 1;
+    state.nodes4_len = DHT_STATE_MAX_NODES;
+    state.nodes6_len = DHT_STATE_MAX_NODES;
+    dht_get_nodes(state.nodes4, &state.nodes4_len,
+                  state.nodes6, &state.nodes6_len);
+    return dht_state_save(&state);
+}
 
 static int set_nonblocking(int fd)
 {
@@ -81,7 +99,10 @@ static int make_udp_socket(int family, unsigned short port, unsigned short *out_
 
 int dht_runtime_init(unsigned short dht_port, int ipv6)
 {
+    dht_state_t state;
     unsigned short v4port = 0;
+    int state_status;
+    int i;
     int rc;
 
     g_socket = make_udp_socket(AF_INET, dht_port, &v4port);
@@ -93,12 +114,29 @@ int dht_runtime_init(unsigned short dht_port, int ipv6)
         if(g_socket6 < 0)
             g_socket6 = -1;
     }
-    if(dht_random_bytes(g_node_id, sizeof(g_node_id)) != (int)sizeof(g_node_id))
+    state_status = dht_state_load(&state);
+    if(state_status > 0 && state.has_node_id)
+        memcpy(g_node_id, state.node_id, sizeof(g_node_id));
+    else if(dht_random_bytes(g_node_id, sizeof(g_node_id)) != (int)sizeof(g_node_id))
         goto fail;
 
     rc = dht_init(g_socket, g_socket6, g_node_id, (const unsigned char *)"PD01");
     if(rc < 0)
         goto fail;
+    if(state_status > 0) {
+        int restore4 = state.nodes4_len < DHT_STATE_RESTORE_NODES ?
+                       state.nodes4_len : DHT_STATE_RESTORE_NODES;
+        int restore6 = state.nodes6_len < DHT_STATE_RESTORE_NODES ?
+                       state.nodes6_len : DHT_STATE_RESTORE_NODES;
+
+        for(i = 0; i < restore4; i++)
+            dht_ping_node((struct sockaddr *)&state.nodes4[i], sizeof(state.nodes4[i]));
+        if(g_socket6 >= 0) {
+            for(i = 0; i < restore6; i++)
+                dht_ping_node((struct sockaddr *)&state.nodes6[i], sizeof(state.nodes6[i]));
+        }
+    }
+    g_last_state_save = time(NULL);
     return 0;
 
 fail:
@@ -165,6 +203,10 @@ int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
         dht_periodic(NULL, 0, NULL, 0, &tosleep, cb, cb_closure);
         if(hook != NULL)
             hook(hook_closure);
+        if(time(NULL) - g_last_state_save >= DHT_STATE_SAVE_INTERVAL) {
+            save_dht_state();
+            g_last_state_save = time(NULL);
+        }
 
         FD_ZERO(&rfds);
         if(http_fd >= 0) {
@@ -210,6 +252,7 @@ int dht_runtime_shutdown(void)
 {
     g_stop = 1;
     if(g_socket >= 0) {
+        save_dht_state();
         dht_uninit();
         close(g_socket);
         g_socket = -1;

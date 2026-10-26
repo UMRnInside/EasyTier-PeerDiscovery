@@ -31,6 +31,7 @@ add_executable(easytier-peerdisc
     src/httpd.c
     src/endpoint.c
     src/easytier_rpc.c
+    src/node_json.c
 )
 
 add_executable(et-secret-hash
@@ -82,6 +83,21 @@ target_compile_features(peerdisc_tests PRIVATE c_std_11)
 
 add_test(NAME core COMMAND peerdisc_tests)
 
+add_executable(peerdisc_node_json_tests
+    tests/test_node_json.c
+    src/node_json.c
+    ${CMAKE_SOURCE_DIR}/3rdparty/unity/src/unity.c
+)
+target_include_directories(peerdisc_node_json_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/3rdparty/unity/src
+)
+if(WIN32)
+    target_compile_definitions(peerdisc_node_json_tests PRIVATE _WIN32_WINNT=0x0600 WINVER=0x0600)
+    target_link_libraries(peerdisc_node_json_tests PRIVATE ws2_32)
+endif()
+add_test(NAME node_json COMMAND peerdisc_node_json_tests)
+
 add_executable(peerdisc_cli_fixture tests/cli_fixture.c)
 set_target_properties(peerdisc_cli_fixture PROPERTIES OUTPUT_NAME "Easy Tier fixture")
 add_executable(peerdisc_platform_tests
@@ -90,6 +106,7 @@ add_executable(peerdisc_platform_tests
     src/dht_runtime.c
     src/dht_state.c
     src/easytier_rpc.c
+    src/node_json.c
     src/httpd.c
     src/endpoint.c
     ${DHT_SRCS}
@@ -116,6 +133,7 @@ if(UNIX)
         src/args.c
         src/dht_state.c
         src/easytier_rpc.c
+        src/node_json.c
         ${CMAKE_SOURCE_DIR}/3rdparty/unity/src/unity.c
     )
     target_include_directories(peerdisc_path_tests PRIVATE

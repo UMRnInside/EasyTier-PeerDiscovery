@@ -159,6 +159,47 @@ static void test_cli_literal_arguments_and_exit_status(void)
     TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
 }
 
+static void test_cli_json_output(void)
+{
+    const char *invalid_hosts[] = {"invalid", "empty", "oversized"};
+    char endpoint[256];
+    int nat_ok = 0;
+    size_t i;
+
+    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("ipv6", 15888, g_cli_path));
+    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
+    TEST_ASSERT_EQUAL_STRING("tcp://[2001:db8::1]:11010", endpoint);
+    TEST_ASSERT_EQUAL_INT(1, nat_ok);
+    for(i = 0; i < sizeof(invalid_hosts) / sizeof(invalid_hosts[0]); i++) {
+        TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init(invalid_hosts[i], 15888, g_cli_path));
+        nat_ok = 1;
+        TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
+        TEST_ASSERT_EQUAL_INT(0, nat_ok);
+    }
+}
+
+static void test_nat_announce_eligibility(void)
+{
+    const char *types[] = {"Public", "FriendlyNAT", "NoPAT", "OpenInternet", "FullCone",
+                           "PortRestricted", "Symmetric", "Unknown", "", "fullcone"};
+    char host[64];
+    char endpoint[256];
+    int nat_ok;
+    size_t i;
+
+    for(i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+        int allowed = i < 5;
+        snprintf(host, sizeof(host), "nat-%s", types[i]);
+        TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init(host, 15888, g_cli_path));
+        nat_ok = !allowed;
+        TEST_ASSERT_EQUAL_INT(allowed ? 0 : -1,
+                              easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
+        TEST_ASSERT_EQUAL_INT(allowed, nat_ok);
+        if(allowed)
+            TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
+    }
+}
+
 int main(int argc, char **argv)
 {
     char state_file[4200];
@@ -187,6 +228,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_http_socket_interface);
     RUN_TEST(test_random_bytes);
     RUN_TEST(test_cli_literal_arguments_and_exit_status);
+    RUN_TEST(test_cli_json_output);
+    RUN_TEST(test_nat_announce_eligibility);
     result = UNITY_END();
     snprintf(state_file, sizeof(state_file), "%s/dht-state.bin", g_state_directory);
     remove(state_file);

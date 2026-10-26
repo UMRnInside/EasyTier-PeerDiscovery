@@ -131,15 +131,14 @@ int main(int argc, char **argv)
 {
     int result;
 
-    if(argc == 4 && strcmp(argv[1], "-p") == 0) {
+    if(argc == 6 && strcmp(argv[1], "-p") == 0) {
         if(strcmp(argv[2], "host;$(false) with space:15888") != 0 ||
-           strcmp(argv[3], "node") != 0)
+           strcmp(argv[3], "--output") != 0 || strcmp(argv[4], "json") != 0 ||
+           strcmp(argv[5], "node") != 0)
             return 1;
-        puts("| Listener 1 | tcp://0.0.0.0:11010 |\n"
-             "| Public IPv4 | 1.2.3.4 |\n"
-             "| Public IPv6 | 2001:db8::1 |\n"
-             "| TCP Stun Type | FriendlyNAT |\n"
-             "| UDP Stun Type | Public |");
+        puts("{\n\"listeners\": [\"ring://test\", \"tcp://0.0.0.0:11010\"],\n"
+             "\"stun_info\": {\"public_ip\": [\"1.2.3.4\", \"2001:db8::1\"],\n"
+             "\"tcp_nat_type\": \"FriendlyNAT\", \"udp_nat_type\": \"Public\"}}");
         return 0;
     }
     if(realpath(argv[0], g_executable) == NULL ||

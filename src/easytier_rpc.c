@@ -5,6 +5,7 @@
 #endif
 
 #include "easytier_rpc.h"
+#include "node_json.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +31,13 @@ static char g_cli_path[4096] = "easytier-cli";
 static int g_custom_cli_path;
 static int g_verbose;
 
+static int nat_allows_announce(const char *type)
+{
+    return strcmp(type, "Public") == 0 || strcmp(type, "FriendlyNAT") == 0 ||
+           strcmp(type, "NoPAT") == 0 || strcmp(type, "OpenInternet") == 0 ||
+           strcmp(type, "FullCone") == 0;
+}
+
 void easytier_rpc_set_verbose(int verbose)
 {
     g_verbose = verbose;
@@ -48,37 +56,6 @@ int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port,
     snprintf(g_rpc_host, sizeof(g_rpc_host), "%s", rpc_host);
     g_rpc_port = rpc_port;
     return 0;
-}
-
-static int md_field(const char *line, const char *label, char *out, size_t outlen)
-{
-    const char *p;
-    const char *end;
-    size_t n;
-    p = strstr(line, label);
-    if(p == NULL)
-        return -1;
-    p += strlen(label);
-    p = strchr(p, '|');
-    if(p == NULL)
-        return -1;
-    p++;
-    while(*p == ' ')
-        p++;
-    end = strchr(p, '|');
-    n = end != NULL ? (size_t)(end - p) : strlen(p);
-    while(n > 0 && (p[n - 1] == ' ' || p[n - 1] == '\n' || p[n - 1] == '\r'))
-        n--;
-    if(n == 0 || n >= outlen)
-        return -1;
-    memcpy(out, p, n);
-    out[n] = '\0';
-    return 0;
-}
-
-static int starts_with(const char *s, const char *prefix)
-{
-    return strncmp(s, prefix, strlen(prefix)) == 0;
 }
 
 static unsigned short listener_port(const char *listener)
@@ -122,7 +99,7 @@ static FILE *spawn_easytier_cli(cli_process_t *pid_out)
 {
     wchar_t executable[4096];
     wchar_t target[160];
-    wchar_t command[2 * (4096 + 160) + 64];
+    wchar_t command[2 * (4096 + 160) + 128];
     wchar_t *next;
     SECURITY_ATTRIBUTES security = {sizeof(security), NULL, TRUE};
     STARTUPINFOEXW startup;
@@ -151,6 +128,10 @@ static FILE *spawn_easytier_cli(cli_process_t *pid_out)
     next = append_argument(next, L"-p");
     *next++ = L' ';
     next = append_argument(next, target);
+    *next++ = L' ';
+    next = append_argument(next, L"--output");
+    *next++ = L' ';
+    next = append_argument(next, L"json");
     *next++ = L' ';
     append_argument(next, L"node");
 
@@ -252,6 +233,8 @@ static FILE *spawn_easytier_cli(cli_process_t *pid_out)
             g_cli_path,
             (char *)"-p",
             rpc_target,
+            (char *)"--output",
+            (char *)"json",
             (char *)"node",
             NULL,
         };
@@ -299,12 +282,14 @@ static int wait_for_cli(cli_process_t pid)
 
 int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
 {
-    char line[512];
-    char pubv4[64] = "";
-    char pubv6[64] = "";
-    char nattr[32] = "";
-    char tcp_nat[32] = "";
-    char listener[128] = "";
+    const size_t output_limit = 1024 * 1024;
+    char chunk[4096];
+    char *json = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    size_t count;
+    int read_failed = 0;
+    node_json_t node;
     FILE *f;
     cli_process_t pid;
     int cli_status;
@@ -320,53 +305,69 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
         return -1;
     }
 
-    while(fgets(line, sizeof(line), f) != NULL) {
-        if(listener[0] == '\0' && md_field(line, "Listener", listener, sizeof(listener)) == 0 &&
-           starts_with(listener, "ring"))
-            listener[0] = '\0';
-        if(pubv4[0] == '\0')
-            md_field(line, "Public IPv4", pubv4, sizeof(pubv4));
-        if(pubv6[0] == '\0')
-            md_field(line, "Public IPv6", pubv6, sizeof(pubv6));
-        if(nattr[0] == '\0')
-            md_field(line, "UDP Stun Type", nattr, sizeof(nattr));
-        if(tcp_nat[0] == '\0')
-            md_field(line, "TCP Stun Type", tcp_nat, sizeof(tcp_nat));
+    while((count = fread(chunk, 1, sizeof(chunk), f)) != 0) {
+        char *grown;
+        if(read_failed)
+            continue;
+        if(count > output_limit - length) {
+            read_failed = 1;
+            continue;
+        }
+        if(length + count > capacity) {
+            size_t next = capacity == 0 ? sizeof(chunk) : capacity * 2;
+            grown = realloc(json, next);
+            if(grown == NULL) {
+                read_failed = 1;
+                continue;
+            }
+            json = grown;
+            capacity = next;
+        }
+        memcpy(json + length, chunk, count);
+        length += count;
     }
+    read_failed |= ferror(f) != 0;
     fclose(f);
     cli_status = wait_for_cli(pid);
     if(cli_status != 0) {
+        free(json);
         if(g_verbose)
             printf("easytier-peerdisc: NAT query failed: easytier-cli exited unsuccessfully\n");
         return -1;
     }
+    if(read_failed || length == 0 || node_json_parse(json, length, &node) != 0) {
+        free(json);
+        if(g_verbose)
+            printf("easytier-peerdisc: NAT query failed: invalid, oversized, or unreadable node JSON\n");
+        return -1;
+    }
+    free(json);
 
     if(g_verbose) {
         printf("easytier-peerdisc: NAT query TCP STUN %s, UDP STUN %s "
                "(CLI does not report per-family NAT types)\n",
-               tcp_nat[0] != '\0' ? tcp_nat : "unavailable",
-               nattr[0] != '\0' ? nattr : "unavailable");
+               node.tcp_nat[0] != '\0' ? node.tcp_nat : "unavailable",
+               node.udp_nat[0] != '\0' ? node.udp_nat : "unavailable");
         printf("easytier-peerdisc: NAT query public ipv4 %s, public ipv6 %s, listener %s\n",
-               pubv4[0] != '\0' ? pubv4 : "unavailable",
-               pubv6[0] != '\0' ? pubv6 : "unavailable",
-               listener[0] != '\0' ? listener : "unavailable");
+               node.public_ipv4[0] != '\0' ? node.public_ipv4 : "unavailable",
+               node.public_ipv6[0] != '\0' ? node.public_ipv6 : "unavailable",
+               node.listener[0] != '\0' ? node.listener : "unavailable");
     }
 
-    if(nattr[0] == '\0' ||
-       (strcmp(nattr, "Public") != 0 && strcmp(nattr, "FriendlyNAT") != 0))
+    if(!nat_allows_announce(node.udp_nat))
         return -1;
-    if(pubv4[0] == '\0' && pubv6[0] == '\0')
+    if(node.public_ipv4[0] == '\0' && node.public_ipv6[0] == '\0')
         return -1;
-    if(listener[0] == '\0')
+    if(node.listener[0] == '\0')
         return -1;
-    port = listener_port(listener);
+    port = listener_port(node.listener);
     if(port == 0)
         return -1;
 
-    if(pubv4[0] != '\0')
-        snprintf(buf, buflen, "tcp://%s:%u", pubv4, port);
+    if(node.public_ipv4[0] != '\0')
+        snprintf(buf, buflen, "tcp://%s:%u", node.public_ipv4, port);
     else
-        snprintf(buf, buflen, "tcp://[%s]:%u", pubv6, port);
+        snprintf(buf, buflen, "tcp://[%s]:%u", node.public_ipv6, port);
 
     if(nat_ok != NULL)
         *nat_ok = 1;

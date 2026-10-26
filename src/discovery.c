@@ -177,7 +177,7 @@ static void maybe_announce(time_t now)
     g_announce_checked = 1;
     if(easytier_rpc_get_endpoint(url, sizeof(url), &nat_ok) != 0 || !nat_ok) {
         if(g_verbose)
-            printf("easytier-peerdisc: announce no: NAT query failed, UDP NAT is not Public/FriendlyNAT, or public endpoint unavailable\n");
+            printf("easytier-peerdisc: announce no: NAT query failed, UDP NAT is not eligible, or public endpoint unavailable\n");
         return;
     }
     aport = url_port(url);

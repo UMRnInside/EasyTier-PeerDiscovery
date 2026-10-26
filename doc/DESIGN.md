@@ -64,7 +64,8 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - **On-demand announce** (`dht_search(..., port!=0, ...)`) only when:
   1. every enabled protocol and address-family search in this round has
      completed without returning a peer;
-  2. `easytier-cli node` reports `Public` or `FriendlyNAT`, a public address,
+   2. `easytier-cli --output json node` reports a UDP NAT type of `Public`,
+      `FriendlyNAT`, `NoPAT`, `OpenInternet`, or `FullCone`, a public address,
      a non-ring listener, and uptime ≥ 30 seconds. Missing NAT status is not
      eligible for announce.
 - LAN / poor-NAT nodes do **not** announce; they only query and join other
@@ -73,7 +74,11 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - The announced port is the **EasyTier listener port**, not this program's own
   DHT UDP port. Mainline DHT derives the address from the IPv4 or IPv6 request
   source. Public IP / NAT type / listen port eligibility comes from
-  `easytier-cli node` (RPC portal).
+   `easytier-cli --output json node` (RPC portal). JSON parsing reads
+   `stun_info` and `listeners`, ignores unrelated fields (including the
+   secret-bearing `config` string), and rejects malformed or oversized output.
+   Raw NAT enum names are preserved. Only the UDP NAT types listed above are
+   eligible; missing or unknown NAT types remain ineligible.
 - Announce interval defaults to 15 minutes (keeps the entry refreshed at least
   twice within Mainline's ~30-min–2-hour reaping window).
 

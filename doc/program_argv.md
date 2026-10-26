@@ -34,7 +34,7 @@ subsequent SHA-256 topic derivation.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `--http <host:port>` | string | `127.0.0.1:8080` | Local `GET /endpoint` listen address, consumed by EasyTier `-p http://...`. |
+| `--http <host:port>` | string | `127.0.0.1:11008` | Local `GET /endpoint` listen address, consumed by EasyTier `-p http://...`. |
 
 ## DHT runtime
 
@@ -79,7 +79,7 @@ subsequent SHA-256 topic derivation.
 ## Design notes
 
 - Defaults align with upstream: `--rpc 127.0.0.1:15888` matches
-  `easytier-cli`'s default rpc portal; `--http 127.0.0.1:8080` follows the
+  `easytier-cli`'s default rpc portal; `--http 127.0.0.1:11008` follows the
   `AGENTS.md` example.
 - Frozen rules are baked in, not exposed: infohash KDF parameters are fixed;
   `--announce-interval` enforces the `900` default / `300` minimum.

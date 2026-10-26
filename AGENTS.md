@@ -61,6 +61,6 @@ git submodule update --init --recursive
 cmake -S . -B build
 cmake --build build
 ./build/easytier-peerdisc --network-name <net> --secret <secret> \
-    --http 127.0.0.1:8080 --dht-port 0
-easytier-core -n <net> -k <secret> -p http://127.0.0.1:8080/endpoint
+    --http 127.0.0.1:11008 --dht-port 0
+easytier-core -n <net> -k <secret> -p http://127.0.0.1:11008/endpoint
 ```

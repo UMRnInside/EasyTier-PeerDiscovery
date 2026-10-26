@@ -99,7 +99,7 @@ void args_print_usage(FILE *out)
             "      --secret-hash <hex>      Precomputed 32-byte secret hash\n"
             "\n"
             "HTTP /endpoint service:\n"
-            "      --http <host:port>       Listen address (default 127.0.0.1:8080)\n"
+            "      --http <host:port>       Listen address (default 127.0.0.1:11008)\n"
             "\n"
             "DHT runtime:\n"
             "      --dht-port <port>        DHT UDP listen port (default 0 = random)\n"

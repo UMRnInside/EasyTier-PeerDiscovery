@@ -9,25 +9,20 @@
 #include "dht_state.h"
 #include "httpd.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
+#include <limits.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define DHT_BUFSIZE 4096
 #define DHT_STATE_SAVE_INTERVAL 300
 #define DHT_STATE_RESTORE_NODES 32
 
-static int g_socket = -1;
-static int g_socket6 = -1;
+static net_socket_t g_socket = NET_INVALID_SOCKET;
+static net_socket_t g_socket6 = NET_INVALID_SOCKET;
 static unsigned char g_node_id[20];
 static volatile sig_atomic_t g_stop = 0;
 static time_t g_last_state_save;
@@ -67,27 +62,18 @@ static int save_dht_state(void)
     return rc;
 }
 
-static int set_nonblocking(int fd)
-{
-    int flags = fcntl(fd, F_GETFL, 0);
-    if(flags < 0)
-        return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
-static int make_udp_socket(int family, unsigned short port, unsigned short *out_port)
+static net_socket_t make_udp_socket(int family, unsigned short port, unsigned short *out_port)
 {
     struct sockaddr_storage ss;
-    socklen_t len;
-    int fd;
-    int one = 1;
+    net_socklen_t len;
+    net_socket_t fd;
 
     fd = socket(family, SOCK_DGRAM, 0);
-    if(fd < 0)
-        return -1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    if(fd == NET_INVALID_SOCKET)
+        return NET_INVALID_SOCKET;
+    net_set_option(fd, SOL_SOCKET, SO_REUSEADDR, 1);
     if(family == AF_INET6)
-        setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof(one));
+        net_set_option(fd, IPPROTO_IPV6, IPV6_V6ONLY, 1);
 
     memset(&ss, 0, sizeof(ss));
     if(family == AF_INET) {
@@ -102,8 +88,8 @@ static int make_udp_socket(int family, unsigned short port, unsigned short *out_
         a->sin6_port = htons(port);
     }
     if(bind(fd, (struct sockaddr *)&ss, sizeof(ss)) < 0) {
-        close(fd);
-        return -1;
+        net_close(fd);
+        return NET_INVALID_SOCKET;
     }
     if(port == 0 && out_port != NULL) {
         len = sizeof(ss);
@@ -114,7 +100,10 @@ static int make_udp_socket(int family, unsigned short port, unsigned short *out_
                 *out_port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
         }
     }
-    set_nonblocking(fd);
+    if(net_set_nonblocking(fd) != 0) {
+        net_close(fd);
+        return NET_INVALID_SOCKET;
+    }
     return fd;
 }
 
@@ -132,13 +121,11 @@ int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
     if(dht_state_set_directory(state_directory) != 0)
         return -1;
     g_socket = make_udp_socket(AF_INET, dht_port, &v4port);
-    if(g_socket < 0)
+    if(g_socket == NET_INVALID_SOCKET)
         return -1;
-    g_socket6 = -1;
+    g_socket6 = NET_INVALID_SOCKET;
     if(ipv6) {
         g_socket6 = make_udp_socket(AF_INET6, v4port, NULL);
-        if(g_socket6 < 0)
-            g_socket6 = -1;
     }
     state_status = dht_state_load(&state);
     log_state("load", state_status, &state);
@@ -147,7 +134,9 @@ int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
     else if(dht_random_bytes(g_node_id, sizeof(g_node_id)) != (int)sizeof(g_node_id))
         goto fail;
 
-    rc = dht_init(g_socket, g_socket6, g_node_id, (const unsigned char *)"PD01");
+    /* The DHT library only passes these integer tokens to dht_sendto. */
+    rc = dht_init(0, g_socket6 != NET_INVALID_SOCKET ? 1 : -1,
+                  g_node_id, (const unsigned char *)"PD01");
     if(rc < 0)
         goto fail;
     if(state_status > 0) {
@@ -158,7 +147,7 @@ int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
 
         for(i = 0; i < restore4; i++)
             dht_ping_node((struct sockaddr *)&state.nodes4[i], sizeof(state.nodes4[i]));
-        if(g_socket6 >= 0) {
+        if(g_socket6 != NET_INVALID_SOCKET) {
             for(i = 0; i < restore6; i++)
                 dht_ping_node((struct sockaddr *)&state.nodes6[i], sizeof(state.nodes6[i]));
         }
@@ -167,11 +156,11 @@ int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
     return 0;
 
 fail:
-    close(g_socket);
-    g_socket = -1;
-    if(g_socket6 >= 0) {
-        close(g_socket6);
-        g_socket6 = -1;
+    net_close(g_socket);
+    g_socket = NET_INVALID_SOCKET;
+    if(g_socket6 != NET_INVALID_SOCKET) {
+        net_close(g_socket6);
+        g_socket6 = NET_INVALID_SOCKET;
     }
     return -1;
 }
@@ -201,12 +190,12 @@ int dht_runtime_search(const unsigned char *id, int port, int af,
     return dht_search(id, port, af, cb, closure);
 }
 
-static void handle_udp(int fd, dht_callback_t *cb, void *closure)
+static void handle_udp(net_socket_t fd, dht_callback_t *cb, void *closure)
 {
     struct sockaddr_storage from;
-    socklen_t fromlen = sizeof(from);
+    net_socklen_t fromlen = sizeof(from);
     char buf[DHT_BUFSIZE + 1];
-    ssize_t len;
+    int len;
     time_t tosleep = 0;
 
     len = recvfrom(fd, buf, DHT_BUFSIZE, 0, (struct sockaddr *)&from, &fromlen);
@@ -217,13 +206,13 @@ static void handle_udp(int fd, dht_callback_t *cb, void *closure)
                  &tosleep, cb, closure);
 }
 
-int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
+int dht_runtime_run(net_socket_t http_fd, dht_callback_t *cb, void *cb_closure,
                     dht_runtime_hook_t hook, void *hook_closure)
 {
     while(!g_stop) {
         time_t tosleep = 0;
         fd_set rfds;
-        int nfds = 0;
+        net_socket_t highest = 0;
         struct timeval tv;
         int rc;
 
@@ -236,20 +225,20 @@ int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
         }
 
         FD_ZERO(&rfds);
-        if(http_fd >= 0) {
+        if(http_fd != NET_INVALID_SOCKET) {
             FD_SET(http_fd, &rfds);
-            if(http_fd >= nfds)
-                nfds = http_fd + 1;
+            if(http_fd > highest)
+                highest = http_fd;
         }
-        if(g_socket >= 0) {
+        if(g_socket != NET_INVALID_SOCKET) {
             FD_SET(g_socket, &rfds);
-            if(g_socket >= nfds)
-                nfds = g_socket + 1;
+            if(g_socket > highest)
+                highest = g_socket;
         }
-        if(g_socket6 >= 0) {
+        if(g_socket6 != NET_INVALID_SOCKET) {
             FD_SET(g_socket6, &rfds);
-            if(g_socket6 >= nfds)
-                nfds = g_socket6 + 1;
+            if(g_socket6 > highest)
+                highest = g_socket6;
         }
 
         if(tosleep < 0)
@@ -259,17 +248,17 @@ int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
         tv.tv_sec = (time_t)tosleep;
         tv.tv_usec = 0;
 
-        rc = select(nfds, &rfds, NULL, NULL, &tv);
+        rc = net_select(highest, &rfds, &tv);
         if(rc < 0) {
-            if(errno == EINTR)
+            if(net_interrupted())
                 continue;
             break;
         }
-        if(http_fd >= 0 && FD_ISSET(http_fd, &rfds))
+        if(http_fd != NET_INVALID_SOCKET && FD_ISSET(http_fd, &rfds))
             httpd_accept();
-        if(g_socket >= 0 && FD_ISSET(g_socket, &rfds))
+        if(g_socket != NET_INVALID_SOCKET && FD_ISSET(g_socket, &rfds))
             handle_udp(g_socket, cb, cb_closure);
-        if(g_socket6 >= 0 && FD_ISSET(g_socket6, &rfds))
+        if(g_socket6 != NET_INVALID_SOCKET && FD_ISSET(g_socket6, &rfds))
             handle_udp(g_socket6, cb, cb_closure);
     }
     return 0;
@@ -283,15 +272,15 @@ void dht_runtime_request_stop(void)
 int dht_runtime_shutdown(void)
 {
     g_stop = 1;
-    if(g_socket >= 0) {
+    if(g_socket != NET_INVALID_SOCKET) {
         save_dht_state();
         dht_uninit();
-        close(g_socket);
-        g_socket = -1;
+        net_close(g_socket);
+        g_socket = NET_INVALID_SOCKET;
     }
-    if(g_socket6 >= 0) {
-        close(g_socket6);
-        g_socket6 = -1;
+    if(g_socket6 != NET_INVALID_SOCKET) {
+        net_close(g_socket6);
+        g_socket6 = NET_INVALID_SOCKET;
     }
     return 0;
 }
@@ -299,7 +288,9 @@ int dht_runtime_shutdown(void)
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
                const struct sockaddr *to, int tolen)
 {
-    return sendto(sockfd, buf, len, flags, to, tolen);
+    net_socket_t socket = sockfd == 0 ? g_socket :
+                          sockfd == 1 ? g_socket6 : NET_INVALID_SOCKET;
+    return sendto(socket, (const char *)buf, len, flags, to, tolen);
 }
 
 int dht_blacklisted(const struct sockaddr *sa, int salen)
@@ -333,12 +324,7 @@ void dht_hash(void *hash_return, int hash_size,
 
 int dht_random_bytes(void *buf, size_t size)
 {
-    int fd;
-    ssize_t rc;
-    fd = open("/dev/urandom", O_RDONLY);
-    if(fd < 0)
+    if(size > INT_MAX)
         return -1;
-    rc = read(fd, buf, size);
-    close(fd);
-    return (int)rc;
+    return RAND_bytes(buf, (int)size) == 1 ? (int)size : -1;
 }

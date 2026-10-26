@@ -69,9 +69,11 @@ static int parse_host_port(const char *s, char **host_out, unsigned short *port_
         return -1;
     if(parse_uint(colon + 1, 65535, &port) != 0)
         return -1;
-    host = strndup(s, (size_t)(colon - s));
+    host = malloc((size_t)(colon - s) + 1);
     if(host == NULL)
         return -1;
+    memcpy(host, s, (size_t)(colon - s));
+    host[colon - s] = '\0';
     *host_out = host;
     *port_out = (unsigned short)port;
     return 0;

@@ -22,6 +22,7 @@ set(DHT_INCLUDES ${CMAKE_SOURCE_DIR}/3rdparty/dht)
 add_executable(easytier-peerdisc
     ${DHT_SRCS}
     src/main.c
+    src/net_platform.c
     src/args.c
     src/dht_runtime.c
     src/dht_state.c
@@ -45,7 +46,8 @@ target_include_directories(easytier-peerdisc PRIVATE
 
 target_link_libraries(easytier-peerdisc PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgConfig::ARGON2)
 if(WIN32)
-    target_link_libraries(easytier-peerdisc PRIVATE shell32 ole32 uuid)
+    target_compile_definitions(easytier-peerdisc PRIVATE _WIN32_WINNT=0x0600 WINVER=0x0600)
+    target_link_libraries(easytier-peerdisc PRIVATE ws2_32 shell32 ole32 uuid)
 endif()
 
 target_include_directories(et-secret-hash PRIVATE
@@ -79,6 +81,34 @@ target_link_libraries(peerdisc_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgCon
 target_compile_features(peerdisc_tests PRIVATE c_std_11)
 
 add_test(NAME core COMMAND peerdisc_tests)
+
+add_executable(peerdisc_cli_fixture tests/cli_fixture.c)
+set_target_properties(peerdisc_cli_fixture PROPERTIES OUTPUT_NAME "Easy Tier fixture")
+add_executable(peerdisc_platform_tests
+    tests/test_platform.c
+    src/net_platform.c
+    src/dht_runtime.c
+    src/dht_state.c
+    src/easytier_rpc.c
+    src/httpd.c
+    src/endpoint.c
+    ${DHT_SRCS}
+    ${CMAKE_SOURCE_DIR}/3rdparty/unity/src/unity.c
+)
+target_include_directories(peerdisc_platform_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${DHT_INCLUDES}
+    ${UTHASH_DIR}
+    ${CMAKE_SOURCE_DIR}/3rdparty/unity/src
+)
+target_link_libraries(peerdisc_platform_tests PRIVATE OpenSSL::Crypto)
+add_dependencies(peerdisc_platform_tests peerdisc_cli_fixture)
+if(WIN32)
+    target_compile_definitions(peerdisc_platform_tests PRIVATE _WIN32_WINNT=0x0600 WINVER=0x0600)
+    target_link_libraries(peerdisc_platform_tests PRIVATE ws2_32 shell32 ole32 uuid)
+endif()
+add_test(NAME platform COMMAND peerdisc_platform_tests $<TARGET_FILE:peerdisc_cli_fixture>)
+set_tests_properties(platform PROPERTIES TIMEOUT 30)
 
 if(UNIX)
     add_executable(peerdisc_path_tests

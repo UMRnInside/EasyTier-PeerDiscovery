@@ -8,25 +8,11 @@
 
 #include "endpoint.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
-static int g_listen_fd = -1;
-
-static int set_nonblocking(int fd)
-{
-    int flags = fcntl(fd, F_GETFL, 0);
-    if(flags < 0)
-        return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
+static net_socket_t g_listen_fd = NET_INVALID_SOCKET;
 
 int httpd_init(const char *listen_host, unsigned short listen_port)
 {
@@ -34,7 +20,7 @@ int httpd_init(const char *listen_host, unsigned short listen_port)
     struct addrinfo *res = NULL;
     struct addrinfo *ai;
     char portstr[8];
-    int fd = -1;
+    net_socket_t fd = NET_INVALID_SOCKET;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -46,30 +32,32 @@ int httpd_init(const char *listen_host, unsigned short listen_port)
         return -1;
 
     for(ai = res; ai != NULL; ai = ai->ai_next) {
-        int one = 1;
         fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-        if(fd < 0)
+        if(fd == NET_INVALID_SOCKET)
             continue;
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        net_set_option(fd, SOL_SOCKET, SO_REUSEADDR, 1);
         if(bind(fd, ai->ai_addr, ai->ai_addrlen) == 0 && listen(fd, 16) == 0)
             break;
-        close(fd);
-        fd = -1;
+        net_close(fd);
+        fd = NET_INVALID_SOCKET;
     }
     freeaddrinfo(res);
-    if(fd < 0)
+    if(fd == NET_INVALID_SOCKET)
         return -1;
-    set_nonblocking(fd);
+    if(net_set_nonblocking(fd) != 0) {
+        net_close(fd);
+        return -1;
+    }
     g_listen_fd = fd;
     return 0;
 }
 
-int httpd_fd(void)
+net_socket_t httpd_fd(void)
 {
     return g_listen_fd;
 }
 
-static void http_send(int c, const char *body, size_t bodylen)
+static void http_send(net_socket_t c, const char *body, size_t bodylen)
 {
     char head[256];
     int n = snprintf(head, sizeof(head),
@@ -80,14 +68,14 @@ static void http_send(int c, const char *body, size_t bodylen)
                      bodylen);
     send(c, head, n, 0);
     if(bodylen > 0)
-        send(c, body, bodylen, 0);
+        send(c, body, (int)bodylen, 0);
 }
 
-static void handle_connection(int c)
+static void handle_connection(net_socket_t c)
 {
     char req[4096];
     char body[512];
-    ssize_t n;
+    int n;
 
     n = recv(c, req, sizeof(req) - 1, 0);
     if(n <= 0)
@@ -109,11 +97,11 @@ static void handle_connection(int c)
 int httpd_accept(void)
 {
     for(;;) {
-        int c = accept(g_listen_fd, NULL, NULL);
-        if(c < 0)
+        net_socket_t c = accept(g_listen_fd, NULL, NULL);
+        if(c == NET_INVALID_SOCKET)
             break;
         handle_connection(c);
-        close(c);
+        net_close(c);
     }
     return 0;
 }
@@ -125,9 +113,9 @@ int httpd_run(void)
         int rc;
         FD_ZERO(&rfds);
         FD_SET(g_listen_fd, &rfds);
-        rc = select(g_listen_fd + 1, &rfds, NULL, NULL, NULL);
+        rc = net_select(g_listen_fd, &rfds, NULL);
         if(rc < 0) {
-            if(errno == EINTR)
+            if(net_interrupted())
                 continue;
             break;
         }
@@ -139,9 +127,9 @@ int httpd_run(void)
 
 int httpd_shutdown(void)
 {
-    if(g_listen_fd >= 0) {
-        close(g_listen_fd);
-        g_listen_fd = -1;
+    if(g_listen_fd != NET_INVALID_SOCKET) {
+        net_close(g_listen_fd);
+        g_listen_fd = NET_INVALID_SOCKET;
     }
     return 0;
 }

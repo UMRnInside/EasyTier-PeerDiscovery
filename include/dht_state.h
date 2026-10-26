@@ -5,11 +5,7 @@
 
 #include <stddef.h>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <netinet/in.h>
-#endif
+#include "net_platform.h"
 
 #define DHT_STATE_NODE_ID_LEN 20
 #define DHT_STATE_MAX_NODES 256

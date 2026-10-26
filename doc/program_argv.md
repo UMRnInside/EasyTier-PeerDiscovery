@@ -59,7 +59,7 @@ subsequent SHA-256 topic derivation.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `-v, --verbose` | flag | off | Log every Mainline DHT peer result, protocol/address-family search completion, and DHT state load/save outcome (path and saved node counts on success). |
+| `-v, --verbose` | flag | off | Log Mainline DHT query infohashes and announce ports, peer results, protocol/address-family search completion, NAT query results, announce decisions/reasons, and DHT state load/save outcomes (path and saved node counts on success). NAT diagnostics report TCP/UDP STUN types and public IPv4/IPv6 addresses; the CLI does not expose separate per-family NAT types. Missing fields are marked unavailable. Announce logs describe local decisions and search submission, not remote acceptance. |
 | `-h, --help` | flag | — | Usage. |
 | `--version` | flag | — | Version number. |
 

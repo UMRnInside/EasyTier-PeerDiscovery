@@ -70,6 +70,7 @@ static int run(const peerdisc_args_t *args)
         fprintf(stderr, "easytier-peerdisc: invalid rpc target or CLI path\n");
         return -1;
     }
+    easytier_rpc_set_verbose(args->verbose);
     if(dht_runtime_init(args->dht_port, args->ipv6, args->verbose,
                         args->dht_state_path) != 0) {
         fprintf(stderr, "easytier-peerdisc: failed to init dht\n");

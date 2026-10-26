@@ -8,6 +8,7 @@
 int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port,
                       const char *cli_path);
 int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok);
+void easytier_rpc_set_verbose(int verbose);
 int easytier_rpc_cleanup(void);
 
 #endif

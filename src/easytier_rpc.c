@@ -28,6 +28,12 @@ static char g_rpc_host[128] = "127.0.0.1";
 static unsigned short g_rpc_port = 15888;
 static char g_cli_path[4096] = "easytier-cli";
 static int g_custom_cli_path;
+static int g_verbose;
+
+void easytier_rpc_set_verbose(int verbose)
+{
+    g_verbose = verbose;
+}
 
 int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port,
                       const char *cli_path)
@@ -297,6 +303,7 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
     char pubv4[64] = "";
     char pubv6[64] = "";
     char nattr[32] = "";
+    char tcp_nat[32] = "";
     char listener[128] = "";
     FILE *f;
     cli_process_t pid;
@@ -307,8 +314,11 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
         *nat_ok = 0;
 
     f = spawn_easytier_cli(&pid);
-    if(f == NULL)
+    if(f == NULL) {
+        if(g_verbose)
+            printf("easytier-peerdisc: NAT query failed: cannot start easytier-cli\n");
         return -1;
+    }
 
     while(fgets(line, sizeof(line), f) != NULL) {
         if(listener[0] == '\0' && md_field(line, "Listener", listener, sizeof(listener)) == 0 &&
@@ -320,11 +330,27 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
             md_field(line, "Public IPv6", pubv6, sizeof(pubv6));
         if(nattr[0] == '\0')
             md_field(line, "UDP Stun Type", nattr, sizeof(nattr));
+        if(tcp_nat[0] == '\0')
+            md_field(line, "TCP Stun Type", tcp_nat, sizeof(tcp_nat));
     }
     fclose(f);
     cli_status = wait_for_cli(pid);
-    if(cli_status != 0)
+    if(cli_status != 0) {
+        if(g_verbose)
+            printf("easytier-peerdisc: NAT query failed: easytier-cli exited unsuccessfully\n");
         return -1;
+    }
+
+    if(g_verbose) {
+        printf("easytier-peerdisc: NAT query TCP STUN %s, UDP STUN %s "
+               "(CLI does not report per-family NAT types)\n",
+               tcp_nat[0] != '\0' ? tcp_nat : "unavailable",
+               nattr[0] != '\0' ? nattr : "unavailable");
+        printf("easytier-peerdisc: NAT query public ipv4 %s, public ipv6 %s, listener %s\n",
+               pubv4[0] != '\0' ? pubv4 : "unavailable",
+               pubv6[0] != '\0' ? pubv6 : "unavailable",
+               listener[0] != '\0' ? listener : "unavailable");
+    }
 
     if(nattr[0] == '\0' ||
        (strcmp(nattr, "Public") != 0 && strcmp(nattr, "FriendlyNAT") != 0))

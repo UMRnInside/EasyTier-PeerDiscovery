@@ -92,6 +92,41 @@ static void test_cli_path_and_literal_arguments(void)
     unlink(path);
 }
 
+static void test_nat_diagnostics(void)
+{
+    char endpoint[256];
+    char output[2048];
+    int nat_ok = 0;
+    int saved_stdout;
+    int rc;
+    size_t length;
+    FILE *capture = tmpfile();
+
+    TEST_ASSERT_NOT_NULL(capture);
+    fflush(stdout);
+    saved_stdout = dup(STDOUT_FILENO);
+    TEST_ASSERT_TRUE(saved_stdout >= 0);
+    TEST_ASSERT_TRUE(dup2(fileno(capture), STDOUT_FILENO) >= 0);
+    easytier_rpc_init("host;$(false) with space", 15888, g_executable);
+    easytier_rpc_set_verbose(1);
+    rc = easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok);
+    easytier_rpc_set_verbose(0);
+    fflush(stdout);
+    dup2(saved_stdout, STDOUT_FILENO);
+    close(saved_stdout);
+    rewind(capture);
+    length = fread(output, 1, sizeof(output) - 1, capture);
+    output[length] = '\0';
+    fclose(capture);
+
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(1, nat_ok);
+    TEST_ASSERT_NOT_NULL(strstr(output, "TCP STUN FriendlyNAT, UDP STUN Public"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "CLI does not report per-family NAT types"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "public ipv4 1.2.3.4, public ipv6 2001:db8::1"));
+    TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
+}
+
 int main(int argc, char **argv)
 {
     int result;
@@ -102,6 +137,8 @@ int main(int argc, char **argv)
             return 1;
         puts("| Listener 1 | tcp://0.0.0.0:11010 |\n"
              "| Public IPv4 | 1.2.3.4 |\n"
+             "| Public IPv6 | 2001:db8::1 |\n"
+             "| TCP Stun Type | FriendlyNAT |\n"
              "| UDP Stun Type | Public |");
         return 0;
     }
@@ -117,6 +154,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_path_arguments);
     RUN_TEST(test_custom_state_directory);
     RUN_TEST(test_cli_path_and_literal_arguments);
+    RUN_TEST(test_nat_diagnostics);
     result = UNITY_END();
     rmdir(g_directory);
     return result;

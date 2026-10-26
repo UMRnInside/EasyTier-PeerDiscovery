@@ -61,8 +61,20 @@ static const char *address_family_name(int af)
 
 static int search_topic(const infohash_t *topic, int port, int af)
 {
-    int rc = dht_runtime_search(topic->hash, port, af,
-                                discovery_dht_callback, NULL);
+    int rc;
+
+    if(g_verbose) {
+        char hex[INFOHASH_LEN * 2 + 1];
+        size_t i;
+
+        for(i = 0; i < INFOHASH_LEN; i++)
+            snprintf(hex + i * 2, 3, "%02x", topic->hash[i]);
+        printf("easytier-peerdisc: dht query %s %s infohash %s, announce %s, port %d\n",
+               topic_scheme(topic), address_family_name(af), hex,
+               port != 0 ? "yes" : "no", port);
+    }
+    rc = dht_runtime_search(topic->hash, port, af,
+                            discovery_dht_callback, NULL);
     if(rc < 0 && g_verbose)
         printf("easytier-peerdisc: dht query %s %s failed to start\n",
                topic_scheme(topic), address_family_name(af));
@@ -94,6 +106,8 @@ static void start_query(const infohash_t *topic, int af, unsigned bit)
 {
     if(search_topic(topic, 0, af) < 0) {
         g_query_pending &= ~bit;
+        if(g_verbose && !g_query_failed)
+            printf("easytier-peerdisc: announce no: query failed to start\n");
         g_query_failed = 1;
     }
 }
@@ -161,11 +175,19 @@ static void maybe_announce(time_t now)
     if(now - g_start_time < INITIAL_ANNOUNCE_DELAY)
         return;
     g_announce_checked = 1;
-    if(easytier_rpc_get_endpoint(url, sizeof(url), &nat_ok) != 0 || !nat_ok)
+    if(easytier_rpc_get_endpoint(url, sizeof(url), &nat_ok) != 0 || !nat_ok) {
+        if(g_verbose)
+            printf("easytier-peerdisc: announce no: NAT query failed, UDP NAT is not Public/FriendlyNAT, or public endpoint unavailable\n");
         return;
+    }
     aport = url_port(url);
-    if(aport == 0)
+    if(aport == 0) {
+        if(g_verbose)
+            printf("easytier-peerdisc: announce no: endpoint port unavailable\n");
         return;
+    }
+    if(g_verbose)
+        printf("easytier-peerdisc: announce yes: no peers found, eligible endpoint %s\n", url);
     launch_search(aport, AF_INET);
     if(g_ipv6)
         launch_search(aport, AF_INET6);
@@ -199,6 +221,10 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
 
 int discovery_start(void)
 {
+    if(g_verbose)
+        printf("easytier-peerdisc: announce %s\n",
+               g_no_announce ? "no: disabled by --no-announce" :
+               "pending: query results and NAT eligibility required, initial delay 30 seconds");
     g_start_time = time(NULL);
     start_query_round(g_start_time);
     return 0;
@@ -221,8 +247,11 @@ void discovery_dht_callback(void *closure, int event,
     switch(event) {
     case DHT_EVENT_VALUES:
         bit = query_bit(info_hash, AF_INET);
-        if((g_query_pending & bit) != 0)
+        if((g_query_pending & bit) != 0) {
+            if(g_verbose && !g_last_found)
+                printf("easytier-peerdisc: announce no: peers found in current query round\n");
             g_last_found = 1;
+        }
         for(i = 0; i + 6 <= data_len; i += 6) {
             p = (const unsigned char *)data + i;
             add_peer(AF_INET, p, (const infohash_t *)info_hash);
@@ -230,8 +259,11 @@ void discovery_dht_callback(void *closure, int event,
         break;
     case DHT_EVENT_VALUES6:
         bit = query_bit(info_hash, AF_INET6);
-        if((g_query_pending & bit) != 0)
+        if((g_query_pending & bit) != 0) {
+            if(g_verbose && !g_last_found)
+                printf("easytier-peerdisc: announce no: peers found in current query round\n");
             g_last_found = 1;
+        }
         for(i = 0; i + 18 <= data_len; i += 18) {
             p = (const unsigned char *)data + i;
             add_peer(AF_INET6, p, (const infohash_t *)info_hash);

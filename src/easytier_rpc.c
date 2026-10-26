@@ -94,7 +94,8 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
     }
     pclose(f);
 
-    if(nattr[0] != '\0' && strcmp(nattr, "Public") != 0 && strcmp(nattr, "FriendlyNAT") != 0)
+    if(nattr[0] == '\0' ||
+       (strcmp(nattr, "Public") != 0 && strcmp(nattr, "FriendlyNAT") != 0))
         return -1;
     if(pubv4[0] == '\0' && pubv6[0] == '\0')
         return -1;

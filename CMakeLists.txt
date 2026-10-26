@@ -79,3 +79,18 @@ target_link_libraries(peerdisc_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgCon
 target_compile_features(peerdisc_tests PRIVATE c_std_11)
 
 add_test(NAME core COMMAND peerdisc_tests)
+
+if(UNIX)
+    add_executable(peerdisc_path_tests
+        tests/test_paths.c
+        src/args.c
+        src/dht_state.c
+        src/easytier_rpc.c
+        ${CMAKE_SOURCE_DIR}/3rdparty/unity/src/unity.c
+    )
+    target_include_directories(peerdisc_path_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/3rdparty/unity/src
+    )
+    add_test(NAME paths COMMAND peerdisc_path_tests)
+endif()

@@ -27,6 +27,8 @@ typedef struct {
     int ipv6;
     int quic;
     char *rpc_host;
+    char *easytier_cli_path;
+    char *dht_state_path;
     unsigned short rpc_port;
     int verbose;
 } peerdisc_args_t;

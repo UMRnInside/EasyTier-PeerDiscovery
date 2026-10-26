@@ -17,11 +17,19 @@
 
 static char g_rpc_host[128] = "127.0.0.1";
 static unsigned short g_rpc_port = 15888;
+static char g_cli_path[4096] = "easytier-cli";
+static int g_custom_cli_path;
 
-int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port)
+int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port,
+                      const char *cli_path)
 {
-    if(rpc_host == NULL)
+    const char *executable = cli_path != NULL ? cli_path : "easytier-cli";
+
+    if(rpc_host == NULL || executable[0] == '\0' ||
+       strlen(executable) >= sizeof(g_cli_path))
         return -1;
+    strcpy(g_cli_path, executable);
+    g_custom_cli_path = cli_path != NULL;
     snprintf(g_rpc_host, sizeof(g_rpc_host), "%s", rpc_host);
     g_rpc_port = rpc_port;
     return 0;
@@ -87,7 +95,7 @@ static FILE *spawn_easytier_cli(pid_t *pid_out)
     }
     if(pid == 0) {
         char *const argv[] = {
-            (char *)"easytier-cli",
+            g_cli_path,
             (char *)"-p",
             rpc_target,
             (char *)"node",
@@ -105,7 +113,10 @@ static FILE *spawn_easytier_cli(pid_t *pid_out)
             dup2(devnull, STDERR_FILENO);
             close(devnull);
         }
-        execvp(argv[0], argv);
+        if(g_custom_cli_path)
+            execv(argv[0], argv);
+        else
+            execvp(argv[0], argv);
         _exit(127);
     }
 

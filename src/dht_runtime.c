@@ -39,7 +39,7 @@ static void log_state(const char *operation, int status, const dht_state_t *stat
 
     if(!g_verbose)
         return;
-    if(dht_state_default_directory(directory, sizeof(directory)) != 0)
+    if(dht_state_directory(directory, sizeof(directory)) != 0)
         snprintf(directory, sizeof(directory), "<unavailable>");
     printf("easytier-peerdisc: dht state %s %s: %s/dht-state.bin",
            operation, status < 0 ? "failed" : status == 0 ? "not found" : "succeeded",
@@ -118,7 +118,8 @@ static int make_udp_socket(int family, unsigned short port, unsigned short *out_
     return fd;
 }
 
-int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose)
+int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
+                     const char *state_directory)
 {
     dht_state_t state;
     unsigned short v4port = 0;
@@ -128,6 +129,8 @@ int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose)
 
     g_verbose = verbose;
     g_stop = 0;
+    if(dht_state_set_directory(state_directory) != 0)
+        return -1;
     g_socket = make_udp_socket(AF_INET, dht_port, &v4port);
     if(g_socket < 0)
         return -1;

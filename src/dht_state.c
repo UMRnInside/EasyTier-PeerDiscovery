@@ -32,6 +32,33 @@
 #define STATE_MAGIC_LEN 7
 #define STATE_HEADER_LEN 12
 
+static char g_directory[4096];
+
+int dht_state_set_directory(const char *directory)
+{
+    if(directory == NULL) {
+        g_directory[0] = '\0';
+        return 0;
+    }
+    if(directory[0] == '\0' || strlen(directory) >= sizeof(g_directory))
+        return -1;
+    strcpy(g_directory, directory);
+    return 0;
+}
+
+int dht_state_directory(char *buf, size_t buflen)
+{
+    size_t len;
+
+    if(g_directory[0] == '\0')
+        return dht_state_default_directory(buf, buflen);
+    len = strlen(g_directory);
+    if(len >= buflen)
+        return -1;
+    memcpy(buf, g_directory, len + 1);
+    return 0;
+}
+
 static int path_join(char *buf, size_t buflen, const char *dir, const char *name)
 {
     size_t dirlen = strlen(dir);
@@ -89,7 +116,7 @@ static int create_directory_tree(const char *path)
         return -1;
     strcpy(copy, path);
     for(p = copy + 1; *p != '\0'; p++) {
-        if(*p != '/' && *p != '\\')
+        if(*p != '/')
             continue;
         *p = '\0';
         if(mkdir_one(copy) != 0 && errno != EEXIST)
@@ -179,7 +206,7 @@ int dht_state_load(dht_state_t *state)
     if(state == NULL)
         return -1;
     memset(state, 0, sizeof(*state));
-    if(dht_state_default_directory(directory, sizeof(directory)) != 0 ||
+    if(dht_state_directory(directory, sizeof(directory)) != 0 ||
        path_join(path, sizeof(path), directory, STATE_FILENAME) != 0)
         return -1;
     f = fopen(path, "rb");
@@ -239,7 +266,7 @@ int dht_state_save(const dht_state_t *state)
        state->nodes4_len > DHT_STATE_MAX_NODES || state->nodes6_len < 0 ||
        state->nodes6_len > DHT_STATE_MAX_NODES)
         return -1;
-    if(dht_state_default_directory(directory, sizeof(directory)) != 0 ||
+    if(dht_state_directory(directory, sizeof(directory)) != 0 ||
        create_directory_tree(directory) != 0 ||
        path_join(path, sizeof(path), directory, STATE_FILENAME) != 0)
         return -1;

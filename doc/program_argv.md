@@ -41,6 +41,7 @@ subsequent SHA-256 topic derivation.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--dht-port <port>` | int | `0` (random) | DHT UDP listen port. |
+| `--dht-state-path <directory>` | path | platform state directory | Store `dht-state.bin` directly in this directory; create it if needed. Overrides XDG/HOME or the Windows Known Folder default. |
 | `--bootstrap <host:port>` | string | four built-in nodes | Repeatable; add a custom bootstrap node. The built-ins are Transmission, BitTorrent, µTorrent, and libtorrent. |
 | `--announce-interval <sec>` | int | `900` | Announce interval in seconds; minimum `300`, rejected below that. |
 | `--no-announce` | flag | off | Force query-only, override automatic announce decisions. |
@@ -52,6 +53,7 @@ subsequent SHA-256 topic derivation.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--rpc <host:port>` | string | `127.0.0.1:15888` | `easytier-cli` rpc portal; queried for public IP / NAT type / listen port. |
+| `--easytier-cli-path <path-to-easytier-cli>` | path | `easytier-cli` from `PATH` | Execute this exact file instead of searching `PATH`. Absolute and working-directory-relative paths are supported. No shell expansion or command arguments are accepted. |
 
 ## Generic
 
@@ -74,6 +76,11 @@ subsequent SHA-256 topic derivation.
 # Fully custom
 ./easytier-peerdisc -n mynet -k mysecret --dht-port 33445 \
     --announce-interval 600 --rpc 127.0.0.1:15888
+
+# Paths containing spaces must be quoted in the invoking shell
+./easytier-peerdisc -n mynet -k mysecret \
+    --easytier-cli-path '/opt/Easy Tier/easytier-cli' \
+    --dht-state-path "$HOME/custom state/peerdisc"
 ```
 
 ## Design notes

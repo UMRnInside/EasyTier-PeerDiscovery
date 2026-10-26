@@ -66,11 +66,12 @@ static int run(const peerdisc_args_t *args)
     }
     http_fd = httpd_fd();
 
-    if(easytier_rpc_init(args->rpc_host, args->rpc_port) != 0) {
-        fprintf(stderr, "easytier-peerdisc: invalid rpc target\n");
+    if(easytier_rpc_init(args->rpc_host, args->rpc_port, args->easytier_cli_path) != 0) {
+        fprintf(stderr, "easytier-peerdisc: invalid rpc target or CLI path\n");
         return -1;
     }
-    if(dht_runtime_init(args->dht_port, args->ipv6, args->verbose) != 0) {
+    if(dht_runtime_init(args->dht_port, args->ipv6, args->verbose,
+                        args->dht_state_path) != 0) {
         fprintf(stderr, "easytier-peerdisc: failed to init dht\n");
         return -1;
     }

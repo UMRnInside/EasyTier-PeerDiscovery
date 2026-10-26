@@ -24,6 +24,8 @@ typedef struct {
 } dht_state_t;
 
 int dht_state_default_directory(char *buf, size_t buflen);
+int dht_state_set_directory(const char *directory);
+int dht_state_directory(char *buf, size_t buflen);
 int dht_state_load(dht_state_t *state);
 int dht_state_save(const dht_state_t *state);
 

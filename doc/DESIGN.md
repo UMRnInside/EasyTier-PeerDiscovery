@@ -93,6 +93,11 @@ Default state directories:
 - Win32: `FOLDERID_LocalAppDataLow\easytier-peerdiscovery`, resolved with the
   Windows Known Folder API.
 
+`--dht-state-path <directory>` overrides this default; `dht-state.bin` is
+stored directly in the supplied directory. Relative paths use the process
+working directory. Paths are literal (no environment-variable or tilde
+expansion by the program).
+
 Writes use a temporary file followed by an atomic replacement. On POSIX, the
 state file mode is restricted to `0600` and newly created directories use
 `0700`.

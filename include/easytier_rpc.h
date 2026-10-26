@@ -5,7 +5,8 @@
 
 #include <stddef.h>
 
-int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port);
+int easytier_rpc_init(const char *rpc_host, unsigned short rpc_port,
+                      const char *cli_path);
 int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok);
 int easytier_rpc_cleanup(void);
 

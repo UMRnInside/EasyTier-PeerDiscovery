@@ -21,6 +21,8 @@ enum {
     OPT_QUIC,
     OPT_RPC,
     OPT_SECRET_HASH,
+    OPT_EASYTIER_CLI_PATH,
+    OPT_DHT_STATE_PATH,
     OPT_VERSION,
 };
 
@@ -37,6 +39,8 @@ static const struct option long_options[] = {
     {"no-ipv6", no_argument, NULL, OPT_NO_IPV6},
     {"quic", no_argument, NULL, OPT_QUIC},
     {"rpc", required_argument, NULL, OPT_RPC},
+    {"easytier-cli-path", required_argument, NULL, OPT_EASYTIER_CLI_PATH},
+    {"dht-state-path", required_argument, NULL, OPT_DHT_STATE_PATH},
     {"verbose", no_argument, NULL, 'v'},
     {"help", no_argument, NULL, 'h'},
     {"version", no_argument, NULL, OPT_VERSION},
@@ -103,6 +107,7 @@ void args_print_usage(FILE *out)
             "\n"
             "DHT runtime:\n"
             "      --dht-port <port>        DHT UDP listen port (default 0 = random)\n"
+            "      --dht-state-path <directory>  Override the platform state directory\n"
             "      --bootstrap <host:port>  Custom bootstrap node (repeatable)\n"
             "      --announce-interval <s>  Announce interval, >= %u (default %u)\n"
             "      --no-announce            Query only, never announce\n"
@@ -111,6 +116,7 @@ void args_print_usage(FILE *out)
             "\n"
             "External endpoint source (easytier-cli RPC):\n"
             "      --rpc <host:port>        easytier-cli rpc portal (default 127.0.0.1:%u)\n"
+            "      --easytier-cli-path <path-to-easytier-cli>  CLI executable (default PATH lookup)\n"
             "\n"
             "Generic:\n"
             "  -v, --verbose                Verbose logging\n"
@@ -155,6 +161,25 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
         case 'v':
             out->verbose = 1;
             break;
+        case OPT_EASYTIER_CLI_PATH:
+        case OPT_DHT_STATE_PATH: {
+            char **path = opt == OPT_EASYTIER_CLI_PATH ?
+                          &out->easytier_cli_path : &out->dht_state_path;
+            char *copy;
+
+            if(optarg[0] == '\0') {
+                fprintf(stderr, "easytier-peerdisc: path must not be empty\n");
+                goto fail;
+            }
+            copy = strdup(optarg);
+            if(copy == NULL) {
+                fprintf(stderr, "easytier-peerdisc: out of memory\n");
+                goto fail;
+            }
+            free(*path);
+            *path = copy;
+            break;
+        }
         case 'h':
             args_print_usage(stdout);
             return 2;
@@ -272,6 +297,8 @@ void args_free(peerdisc_args_t *a)
     free(a->secret_hash);
     free(a->http_host);
     free(a->rpc_host);
+    free(a->easytier_cli_path);
+    free(a->dht_state_path);
     for(i = 0; i < a->bootstrap_len; i++)
         free(a->bootstrap[i]);
     free(a->bootstrap);

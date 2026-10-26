@@ -13,7 +13,8 @@
 
 typedef void (*dht_runtime_hook_t)(void *closure);
 
-int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose);
+int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose,
+                     const char *state_directory);
 int dht_runtime_add_bootstrap(const char *host, unsigned short port);
 int dht_runtime_search(const unsigned char *id, int port, int af,
                        dht_callback_t *cb, void *closure);

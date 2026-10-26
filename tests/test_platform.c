@@ -145,36 +145,32 @@ static void test_random_bytes(void)
 
 static void test_cli_literal_arguments_and_exit_status(void)
 {
-    char endpoint[256];
-    int nat_ok = 0;
+    easytier_network_status_t status;
     TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("host;$(false) with \\\"quotes\\\"", 15888, g_cli_path));
-    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-    TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
-    TEST_ASSERT_EQUAL_INT(1, nat_ok);
+    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_network_status(&status));
+    TEST_ASSERT_EQUAL_INT(11010, status.tcp4_port);
+    TEST_ASSERT_EQUAL_INT(11010, status.udp4_port);
     TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("fail", 15888, g_cli_path));
-    TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-    TEST_ASSERT_EQUAL_INT(0, nat_ok);
+    TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_network_status(&status));
     TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("localhost", 15888,
                                              "missing-directory/missing-cli.exe"));
-    TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
+    TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_network_status(&status));
 }
 
 static void test_cli_json_output(void)
 {
     const char *invalid_hosts[] = {"invalid", "empty", "oversized"};
-    char endpoint[256];
-    int nat_ok = 0;
+    easytier_network_status_t status;
     size_t i;
 
     TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("ipv6", 15888, g_cli_path));
-    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-    TEST_ASSERT_EQUAL_STRING("tcp://[2001:db8::1]:11010", endpoint);
-    TEST_ASSERT_EQUAL_INT(1, nat_ok);
+    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_network_status(&status));
+    TEST_ASSERT_EQUAL_STRING("2001:db8::1", status.public_ipv6);
+    TEST_ASSERT_EQUAL_INT(11010, status.tcp6_port);
+    TEST_ASSERT_EQUAL_INT(11010, status.udp6_port);
     for(i = 0; i < sizeof(invalid_hosts) / sizeof(invalid_hosts[0]); i++) {
         TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init(invalid_hosts[i], 15888, g_cli_path));
-        nat_ok = 1;
-        TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-        TEST_ASSERT_EQUAL_INT(0, nat_ok);
+        TEST_ASSERT_EQUAL_INT(-1, easytier_rpc_get_network_status(&status));
     }
 }
 
@@ -182,21 +178,12 @@ static void test_nat_announce_eligibility(void)
 {
     const char *types[] = {"Public", "FriendlyNAT", "NoPAT", "OpenInternet", "FullCone",
                            "PortRestricted", "Symmetric", "Unknown", "", "fullcone"};
-    char host[64];
-    char endpoint[256];
-    int nat_ok;
     size_t i;
 
     for(i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
         int allowed = i < 5;
-        snprintf(host, sizeof(host), "nat-%s", types[i]);
-        TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init(host, 15888, g_cli_path));
-        nat_ok = !allowed;
-        TEST_ASSERT_EQUAL_INT(allowed ? 0 : -1,
-                              easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-        TEST_ASSERT_EQUAL_INT(allowed, nat_ok);
-        if(allowed)
-            TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
+        TEST_ASSERT_EQUAL_INT(allowed, easytier_ipv4_nat_eligible(types[i], 0));
+        TEST_ASSERT_EQUAL_INT(1, easytier_ipv4_nat_eligible(types[i], 1));
     }
 }
 

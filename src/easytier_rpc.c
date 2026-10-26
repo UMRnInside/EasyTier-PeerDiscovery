@@ -31,11 +31,11 @@ static char g_cli_path[4096] = "easytier-cli";
 static int g_custom_cli_path;
 static int g_verbose;
 
-static int nat_allows_announce(const char *type)
+int easytier_ipv4_nat_eligible(const char *type, int assume_good)
 {
-    return strcmp(type, "Public") == 0 || strcmp(type, "FriendlyNAT") == 0 ||
-           strcmp(type, "NoPAT") == 0 || strcmp(type, "OpenInternet") == 0 ||
-           strcmp(type, "FullCone") == 0;
+    return assume_good || strcmp(type, "Public") == 0 ||
+           strcmp(type, "FriendlyNAT") == 0 || strcmp(type, "NoPAT") == 0 ||
+           strcmp(type, "OpenInternet") == 0 || strcmp(type, "FullCone") == 0;
 }
 
 void easytier_rpc_set_verbose(int verbose)
@@ -280,7 +280,7 @@ static int wait_for_cli(cli_process_t pid)
 }
 #endif
 
-int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
+int easytier_rpc_get_network_status(easytier_network_status_t *status)
 {
     const size_t output_limit = 1024 * 1024;
     char chunk[4096];
@@ -293,10 +293,9 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
     FILE *f;
     cli_process_t pid;
     int cli_status;
-    unsigned short port;
-
-    if(nat_ok != NULL)
-        *nat_ok = 0;
+    if(status == NULL)
+        return -1;
+    memset(status, 0, sizeof(*status));
 
     f = spawn_easytier_cli(&pid);
     if(f == NULL) {
@@ -348,29 +347,29 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
                "(CLI does not report per-family NAT types)\n",
                node.tcp_nat[0] != '\0' ? node.tcp_nat : "unavailable",
                node.udp_nat[0] != '\0' ? node.udp_nat : "unavailable");
-        printf("easytier-peerdisc: NAT query public ipv4 %s, public ipv6 %s, listener %s\n",
+        printf("easytier-peerdisc: NAT query public ipv4 %s, public ipv6 %s\n",
                node.public_ipv4[0] != '\0' ? node.public_ipv4 : "unavailable",
-               node.public_ipv6[0] != '\0' ? node.public_ipv6 : "unavailable",
-               node.listener[0] != '\0' ? node.listener : "unavailable");
+               node.public_ipv6[0] != '\0' ? node.public_ipv6 : "unavailable");
+        printf("easytier-peerdisc: listeners TCP ipv4 %s, ipv6 %s; "
+               "UDP ipv4 %s, ipv6 %s; QUIC ipv4 %s, ipv6 %s\n",
+               node.tcp4_listener[0] != '\0' ? node.tcp4_listener : "unavailable",
+               node.tcp6_listener[0] != '\0' ? node.tcp6_listener : "unavailable",
+               node.udp4_listener[0] != '\0' ? node.udp4_listener : "unavailable",
+               node.udp6_listener[0] != '\0' ? node.udp6_listener : "unavailable",
+               node.quic4_listener[0] != '\0' ? node.quic4_listener : "unavailable",
+               node.quic6_listener[0] != '\0' ? node.quic6_listener : "unavailable");
     }
 
-    if(!nat_allows_announce(node.udp_nat))
-        return -1;
-    if(node.public_ipv4[0] == '\0' && node.public_ipv6[0] == '\0')
-        return -1;
-    if(node.listener[0] == '\0')
-        return -1;
-    port = listener_port(node.listener);
-    if(port == 0)
-        return -1;
-
-    if(node.public_ipv4[0] != '\0')
-        snprintf(buf, buflen, "tcp://%s:%u", node.public_ipv4, port);
-    else
-        snprintf(buf, buflen, "tcp://[%s]:%u", node.public_ipv6, port);
-
-    if(nat_ok != NULL)
-        *nat_ok = 1;
+    snprintf(status->tcp_nat, sizeof(status->tcp_nat), "%s", node.tcp_nat);
+    snprintf(status->udp_nat, sizeof(status->udp_nat), "%s", node.udp_nat);
+    snprintf(status->public_ipv4, sizeof(status->public_ipv4), "%s", node.public_ipv4);
+    snprintf(status->public_ipv6, sizeof(status->public_ipv6), "%s", node.public_ipv6);
+    status->tcp4_port = listener_port(node.tcp4_listener);
+    status->tcp6_port = listener_port(node.tcp6_listener);
+    status->udp4_port = listener_port(node.udp4_listener);
+    status->udp6_port = listener_port(node.udp6_listener);
+    status->quic4_port = listener_port(node.quic4_listener);
+    status->quic6_port = listener_port(node.quic6_listener);
     return 0;
 }
 

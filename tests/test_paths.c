@@ -27,6 +27,8 @@ static void test_path_arguments(void)
                     "--easytier-cli-path", "/opt/Easy Tier/cli;literal",
                     "--dht-state-path", "relative state", NULL};
     char *empty[] = {"peerdisc", "--dht-state-path", "", NULL};
+    char *assume[] = {"peerdisc", "-n", "test", "-k", "test",
+                      "--assume-good-ipv4-nat", NULL};
 
     optind = 1;
     TEST_ASSERT_EQUAL_INT(0, args_parse(9, argv, &args));
@@ -35,6 +37,10 @@ static void test_path_arguments(void)
     args_free(&args);
     optind = 1;
     TEST_ASSERT_EQUAL_INT(1, args_parse(3, empty, &args));
+    optind = 1;
+    TEST_ASSERT_EQUAL_INT(0, args_parse(6, assume, &args));
+    TEST_ASSERT_EQUAL_INT(1, args.assume_good_ipv4_nat);
+    args_free(&args);
 }
 
 static void test_custom_state_directory(void)
@@ -80,23 +86,21 @@ static void test_custom_state_directory(void)
 static void test_cli_path_and_literal_arguments(void)
 {
     char path[PATH_MAX];
-    char endpoint[256];
-    int nat_ok = 0;
+    easytier_network_status_t status;
 
     snprintf(path, sizeof(path), "%s/Easy Tier;literal", g_directory);
     TEST_ASSERT_EQUAL_INT(0, symlink(g_executable, path));
     TEST_ASSERT_EQUAL_INT(0, easytier_rpc_init("host;$(false) with space", 15888, path));
-    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok));
-    TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
-    TEST_ASSERT_EQUAL_INT(1, nat_ok);
+    TEST_ASSERT_EQUAL_INT(0, easytier_rpc_get_network_status(&status));
+    TEST_ASSERT_EQUAL_INT(11010, status.tcp4_port);
+    TEST_ASSERT_EQUAL_INT(11010, status.udp4_port);
     unlink(path);
 }
 
 static void test_nat_diagnostics(void)
 {
-    char endpoint[256];
+    easytier_network_status_t status;
     char output[2048];
-    int nat_ok = 0;
     int saved_stdout;
     int rc;
     size_t length;
@@ -109,7 +113,7 @@ static void test_nat_diagnostics(void)
     TEST_ASSERT_TRUE(dup2(fileno(capture), STDOUT_FILENO) >= 0);
     easytier_rpc_init("host;$(false) with space", 15888, g_executable);
     easytier_rpc_set_verbose(1);
-    rc = easytier_rpc_get_endpoint(endpoint, sizeof(endpoint), &nat_ok);
+    rc = easytier_rpc_get_network_status(&status);
     easytier_rpc_set_verbose(0);
     fflush(stdout);
     dup2(saved_stdout, STDOUT_FILENO);
@@ -120,11 +124,11 @@ static void test_nat_diagnostics(void)
     fclose(capture);
 
     TEST_ASSERT_EQUAL_INT(0, rc);
-    TEST_ASSERT_EQUAL_INT(1, nat_ok);
     TEST_ASSERT_NOT_NULL(strstr(output, "TCP STUN FriendlyNAT, UDP STUN Public"));
     TEST_ASSERT_NOT_NULL(strstr(output, "CLI does not report per-family NAT types"));
     TEST_ASSERT_NOT_NULL(strstr(output, "public ipv4 1.2.3.4, public ipv6 2001:db8::1"));
-    TEST_ASSERT_EQUAL_STRING("tcp://1.2.3.4:11010", endpoint);
+    TEST_ASSERT_EQUAL_INT(11010, status.tcp4_port);
+    TEST_ASSERT_EQUAL_INT(11010, status.udp4_port);
 }
 
 int main(int argc, char **argv)
@@ -136,7 +140,8 @@ int main(int argc, char **argv)
            strcmp(argv[3], "--output") != 0 || strcmp(argv[4], "json") != 0 ||
            strcmp(argv[5], "node") != 0)
             return 1;
-        puts("{\n\"listeners\": [\"ring://test\", \"tcp://0.0.0.0:11010\"],\n"
+        puts("{\n\"listeners\": [\"ring://test\", \"tcp://0.0.0.0:11010\", "
+             "\"udp://0.0.0.0:11010\"],\n"
              "\"stun_info\": {\"public_ip\": [\"1.2.3.4\", \"2001:db8::1\"],\n"
              "\"tcp_nat_type\": \"FriendlyNAT\", \"udp_nat_type\": \"Public\"}}");
         return 0;

@@ -16,6 +16,7 @@ enum {
     OPT_BOOTSTRAP,
     OPT_ANNOUNCE_INTERVAL,
     OPT_NO_ANNOUNCE,
+    OPT_ASSUME_GOOD_IPV4_NAT,
     OPT_IPV6,
     OPT_NO_IPV6,
     OPT_QUIC,
@@ -35,6 +36,7 @@ static const struct option long_options[] = {
     {"bootstrap", required_argument, NULL, OPT_BOOTSTRAP},
     {"announce-interval", required_argument, NULL, OPT_ANNOUNCE_INTERVAL},
     {"no-announce", no_argument, NULL, OPT_NO_ANNOUNCE},
+    {"assume-good-ipv4-nat", no_argument, NULL, OPT_ASSUME_GOOD_IPV4_NAT},
     {"ipv6", no_argument, NULL, OPT_IPV6},
     {"no-ipv6", no_argument, NULL, OPT_NO_IPV6},
     {"quic", no_argument, NULL, OPT_QUIC},
@@ -113,6 +115,7 @@ void args_print_usage(FILE *out)
             "      --bootstrap <host:port>  Custom bootstrap node (repeatable)\n"
             "      --announce-interval <s>  Announce interval, >= %u (default %u)\n"
             "      --no-announce            Query only, never announce\n"
+            "      --assume-good-ipv4-nat   Treat IPv4 TCP/UDP NAT as eligible\n"
             "      --ipv6 / --no-ipv6       Dual-stack toggle (default on)\n"
             "      --quic                   Enable QUIC discovery (default off)\n"
             "\n"
@@ -228,6 +231,9 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
         }
         case OPT_NO_ANNOUNCE:
             out->no_announce = 1;
+            break;
+        case OPT_ASSUME_GOOD_IPV4_NAT:
+            out->assume_good_ipv4_nat = 1;
             break;
         case OPT_IPV6:
             out->ipv6 = 1;

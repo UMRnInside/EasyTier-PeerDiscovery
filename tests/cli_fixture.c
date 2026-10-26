@@ -36,12 +36,14 @@ int main(int argc, char **argv)
     if(strcmp(argv[2], "ipv6:15888") == 0) {
         puts("{\"stun_info\":{\"udp_nat_type\":\"FriendlyNAT\","
              "\"public_ip\":[\"2001:db8::1\"]},"
-             "\"listeners\":[\"ring://test\",\"tcp://[::]:11010\"]}");
+             "\"listeners\":[\"ring://test\",\"tcp://[::]:11010\","
+             "\"udp://[::]:11010\"]}");
         return 0;
     }
     if(strcmp(argv[2], "host;$(false) with \\\"quotes\\\":15888") != 0)
         return 3;
-    puts("{\"listeners\":[\"ring://test\",\"tcp://0.0.0.0:11010\"],"
+    puts("{\"listeners\":[\"ring://test\",\"tcp://0.0.0.0:11010\","
+         "\"udp://0.0.0.0:11010\"],"
          "\"stun_info\":{\"public_ip\":[\"1.2.3.4\"],\"udp_nat_type\":\"Public\"}}");
     return 0;
 }

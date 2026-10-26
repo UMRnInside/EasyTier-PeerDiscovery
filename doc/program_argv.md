@@ -45,8 +45,9 @@ subsequent SHA-256 topic derivation.
 | `--bootstrap <host:port>` | string | four built-in nodes | Repeatable; add a custom bootstrap node. The built-ins are Transmission, BitTorrent, µTorrent, and libtorrent. |
 | `--announce-interval <sec>` | int | `900` | Announce interval in seconds; minimum `300`, rejected below that. |
 | `--no-announce` | flag | off | Force query-only, override automatic announce decisions. |
+| `--assume-good-ipv4-nat` | flag | off | Ignore reported IPv4 TCP/UDP NAT types and treat both as announce-eligible. Public IPv6 detection is unaffected. |
 | `--ipv6` / `--no-ipv6` | flag | on | Dual-stack toggle (BEP32). |
-| `--quic` | flag | off | Also discover and announce the optional QUIC namespace. |
+| `--quic` | flag | off | Also discover the optional QUIC namespace and announce it over IPv4 when UDP NAT is eligible. |
 
 ## External endpoint source (easytier-cli RPC)
 
@@ -59,7 +60,7 @@ subsequent SHA-256 topic derivation.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `-v, --verbose` | flag | off | Log Mainline DHT query infohashes and announce ports, peer results, protocol/address-family search completion, NAT query results, announce decisions/reasons, and DHT state load/save outcomes (path and saved node counts on success). NAT diagnostics parse `easytier-cli -p <target> --output json node` and report `stun_info.tcp_nat_type`, `stun_info.udp_nat_type`, public IPv4/IPv6 addresses from `stun_info.public_ip`, and the first non-ring listener. The CLI does not expose separate per-family NAT types. Missing fields are marked unavailable. The JSON `config` field is ignored and never logged. Announce logs describe local decisions and search submission, not remote acceptance. |
+| `-v, --verbose` | flag | off | Log Mainline DHT query infohashes and announce ports, peer results, protocol/address-family search completion, NAT query results, per-protocol/address-family announce decisions, and DHT state load/save outcomes. NAT diagnostics parse `easytier-cli -p <target> --output json node` and report TCP/UDP NAT types, public IPv4/IPv6 addresses, and TCP/UDP/QUIC listeners. Missing fields are marked unavailable. The JSON `config` field is ignored and never logged. Announce logs describe local decisions and search submission, not remote acceptance. |
 | `-h, --help` | flag | — | Usage. |
 | `--version` | flag | — | Version number. |
 

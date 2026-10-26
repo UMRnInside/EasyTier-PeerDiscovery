@@ -64,21 +64,25 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - **On-demand announce** (`dht_search(..., port!=0, ...)`) only when:
   1. every enabled protocol and address-family search in this round has
      completed without returning a peer;
-   2. `easytier-cli --output json node` reports a UDP NAT type of `Public`,
-      `FriendlyNAT`, `NoPAT`, `OpenInternet`, or `FullCone`, a public address,
-     a non-ring listener, and uptime ≥ 30 seconds. Missing NAT status is not
-     eligible for announce.
-- LAN / poor-NAT nodes do **not** announce; they only query and join other
-  public peers as clients, relying on internal OSPF to spread (avoid zombie
-  entries).
+  2. uptime is at least 30 seconds and `easytier-cli --output json node`
+      reports the information required for that protocol and address family.
+      IPv4 TCP uses the TCP NAT type and TCP listener; IPv4 UDP uses the UDP
+      NAT type and UDP listener. Eligible NAT types are `Public`,
+      `FriendlyNAT`, `NoPAT`, `OpenInternet`, and `FullCone`. Optional IPv4
+      QUIC uses UDP NAT eligibility and its QUIC listener. IPv6 TCP/UDP require
+      a reported public IPv6 address and their respective listeners, but do not
+      use NAT status. `--assume-good-ipv4-nat` overrides both IPv4 NAT checks.
+- Nodes without an eligible IPv4 NAT path or public IPv6 address do **not**
+  announce that protocol/address-family combination; they only query and join
+  other public peers as clients, relying on internal OSPF to spread.
 - The announced port is the **EasyTier listener port**, not this program's own
   DHT UDP port. Mainline DHT derives the address from the IPv4 or IPv6 request
   source. Public IP / NAT type / listen port eligibility comes from
-   `easytier-cli --output json node` (RPC portal). JSON parsing reads
-   `stun_info` and `listeners`, ignores unrelated fields (including the
-   secret-bearing `config` string), and rejects malformed or oversized output.
-   Raw NAT enum names are preserved. Only the UDP NAT types listed above are
-   eligible; missing or unknown NAT types remain ineligible.
+  `easytier-cli --output json node` (RPC portal). JSON parsing reads
+  `stun_info` and `listeners`, ignores unrelated fields (including the
+  secret-bearing `config` string), and rejects malformed or oversized output.
+  Raw NAT enum names are preserved. Missing or unknown IPv4 NAT types remain
+  ineligible unless explicitly overridden.
 - Announce interval defaults to 15 minutes (keeps the entry refreshed at least
   twice within Mainline's ~30-min–2-hour reaping window).
 

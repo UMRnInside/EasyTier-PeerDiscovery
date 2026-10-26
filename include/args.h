@@ -24,6 +24,7 @@ typedef struct {
     size_t bootstrap_len;
     unsigned announce_interval;
     int no_announce;
+    int assume_good_ipv4_nat;
     int ipv6;
     int quic;
     char *rpc_host;

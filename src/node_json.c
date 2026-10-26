@@ -259,8 +259,21 @@ int node_json_parse(const char *json, size_t length, node_json_t *node)
         char listener[128];
         if(string_value(&tokens[i], listener, sizeof(listener)) != 0)
             goto done;
-        if(node->listener[0] == '\0' && strncmp(listener, "ring", 4) != 0)
-            strcpy(node->listener, listener);
+        if(strncmp(listener, "tcp://", 6) == 0) {
+            char *target = listener[6] == '[' ? node->tcp6_listener : node->tcp4_listener;
+            if(target[0] == '\0')
+                strcpy(target, listener);
+        }
+        if(strncmp(listener, "udp://", 6) == 0) {
+            char *target = listener[6] == '[' ? node->udp6_listener : node->udp4_listener;
+            if(target[0] == '\0')
+                strcpy(target, listener);
+        }
+        if(strncmp(listener, "quic://", 7) == 0) {
+            char *target = listener[7] == '[' ? node->quic6_listener : node->quic4_listener;
+            if(target[0] == '\0')
+                strcpy(target, listener);
+        }
     }
     rc = 0;
 done:

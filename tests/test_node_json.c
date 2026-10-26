@@ -19,7 +19,8 @@ static void test_dual_stack_node(void)
         "\"public_ip\":[\"192.0.2.123\",\"2001:db8:1234::1\"],"
         "\"min_port\":32798,\"max_port\":32798},"
         "\"listeners\":[\"ring://test\",\"tcp://0.0.0.0:11010\","
-        "\"udp://0.0.0.0:11010\",\"quic://0.0.0.0:11012\",\"tcp://[::]:11010\"],"
+        "\"udp://0.0.0.0:11010\",\"quic://0.0.0.0:11012\",\"tcp://[::]:11010\","
+        "\"udp://[::]:11010\"],"
         "\"config\":\"network_secret = \\\"not-for-logging\\\"\\n\","
         "\"ip_list\":{\"public_ipv4\":{\"addr\":3221226107},"
         "\"public_ipv6\":{\"part1\":536939960,\"part2\":305397760,\"part4\":1}}}";
@@ -30,7 +31,11 @@ static void test_dual_stack_node(void)
     TEST_ASSERT_EQUAL_STRING("OpenInternet", node.tcp_nat);
     TEST_ASSERT_EQUAL_STRING("192.0.2.123", node.public_ipv4);
     TEST_ASSERT_EQUAL_STRING("2001:db8:1234::1", node.public_ipv6);
-    TEST_ASSERT_EQUAL_STRING("tcp://0.0.0.0:11010", node.listener);
+    TEST_ASSERT_EQUAL_STRING("tcp://0.0.0.0:11010", node.tcp4_listener);
+    TEST_ASSERT_EQUAL_STRING("tcp://[::]:11010", node.tcp6_listener);
+    TEST_ASSERT_EQUAL_STRING("udp://0.0.0.0:11010", node.udp4_listener);
+    TEST_ASSERT_EQUAL_STRING("udp://[::]:11010", node.udp6_listener);
+    TEST_ASSERT_EQUAL_STRING("quic://0.0.0.0:11012", node.quic4_listener);
 }
 
 static void test_ipv4_node(void)
@@ -46,6 +51,8 @@ static void test_ipv4_node(void)
     TEST_ASSERT_EQUAL_STRING("NoPAT", node.tcp_nat);
     TEST_ASSERT_EQUAL_STRING("198.51.100.42", node.public_ipv4);
     TEST_ASSERT_EQUAL_STRING("", node.public_ipv6);
+    TEST_ASSERT_EQUAL_STRING("", node.udp4_listener);
+    TEST_ASSERT_EQUAL_STRING("udp://[::]:11010", node.udp6_listener);
 }
 
 static void test_reordered_compact_and_escaped_json(void)
@@ -62,7 +69,7 @@ static void test_reordered_compact_and_escaped_json(void)
     TEST_ASSERT_EQUAL_STRING("", node.tcp_nat);
     TEST_ASSERT_EQUAL_STRING("", node.public_ipv4);
     TEST_ASSERT_EQUAL_STRING("2001:db8::1", node.public_ipv6);
-    TEST_ASSERT_EQUAL_STRING("tcp://[::]:11010", node.listener);
+    TEST_ASSERT_EQUAL_STRING("tcp://[::]:11010", node.tcp6_listener);
 }
 
 static void test_invalid_json(void)
@@ -98,7 +105,9 @@ static void test_missing_fields(void)
     TEST_ASSERT_EQUAL_INT(0, node_json_parse(json, strlen(json), &node));
     TEST_ASSERT_EQUAL_STRING("", node.udp_nat);
     TEST_ASSERT_EQUAL_STRING("", node.public_ipv4);
-    TEST_ASSERT_EQUAL_STRING("", node.listener);
+    TEST_ASSERT_EQUAL_STRING("", node.tcp4_listener);
+    TEST_ASSERT_EQUAL_STRING("", node.tcp6_listener);
+    TEST_ASSERT_EQUAL_STRING("", node.udp4_listener);
 }
 
 static void test_parser_limits(void)

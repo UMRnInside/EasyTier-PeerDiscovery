@@ -28,6 +28,7 @@ static unsigned g_search_interval;
 static int g_ipv6;
 static int g_no_announce;
 static int g_quic;
+static int g_assume_good_ipv4_nat;
 static int g_verbose;
 
 static time_t g_start_time;
@@ -36,14 +37,6 @@ static int g_last_found;
 static unsigned g_query_pending;
 static int g_query_failed;
 static int g_announce_checked;
-
-static unsigned short url_port(const char *url)
-{
-    const char *p = strrchr(url, ':');
-    if(p == NULL)
-        return 0;
-    return (unsigned short)strtoul(p + 1, NULL, 10);
-}
 
 static const char *topic_scheme(const infohash_t *topic)
 {
@@ -81,12 +74,26 @@ static int search_topic(const infohash_t *topic, int port, int af)
     return rc;
 }
 
-static void launch_search(int port, int af)
+static int announce_topic(const infohash_t *topic, unsigned short port, int af,
+                          const char *ineligible_reason)
 {
-    search_topic(&g_tcp_topic, port, af);
-    search_topic(&g_udp_topic, port, af);
-    if(g_quic)
-        search_topic(&g_quic_topic, port, af);
+    if(port == 0) {
+        if(g_verbose)
+            printf("easytier-peerdisc: announce no: %s %s listener unavailable\n",
+                   topic_scheme(topic), address_family_name(af));
+        return 0;
+    }
+    if(ineligible_reason != NULL) {
+        if(g_verbose)
+            printf("easytier-peerdisc: announce no: %s %s %s\n",
+                   topic_scheme(topic), address_family_name(af), ineligible_reason);
+        return 0;
+    }
+    if(g_verbose)
+        printf("easytier-peerdisc: announce yes: %s %s eligible, port %u\n",
+               topic_scheme(topic), address_family_name(af), port);
+    search_topic(topic, port, af);
+    return 1;
 }
 
 static unsigned query_bit(const unsigned char *info_hash, int af)
@@ -166,37 +173,44 @@ static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
 
 static void maybe_announce(time_t now)
 {
-    char url[256];
-    int nat_ok = 0;
-    unsigned short aport;
+    easytier_network_status_t status;
+    const char *tcp4_reason;
+    const char *udp4_reason;
+    const char *ipv6_reason;
 
     if(g_no_announce || g_last_found || g_query_failed || g_announce_checked)
         return;
     if(now - g_start_time < INITIAL_ANNOUNCE_DELAY)
         return;
     g_announce_checked = 1;
-    if(easytier_rpc_get_endpoint(url, sizeof(url), &nat_ok) != 0 || !nat_ok) {
+    if(easytier_rpc_get_network_status(&status) != 0) {
         if(g_verbose)
-            printf("easytier-peerdisc: announce no: NAT query failed, UDP NAT is not eligible, or public endpoint unavailable\n");
+            printf("easytier-peerdisc: announce no: EasyTier network status query failed\n");
         return;
     }
-    aport = url_port(url);
-    if(aport == 0) {
-        if(g_verbose)
-            printf("easytier-peerdisc: announce no: endpoint port unavailable\n");
+    tcp4_reason = easytier_ipv4_nat_eligible(status.tcp_nat,
+                                             g_assume_good_ipv4_nat) ?
+                  NULL : "TCP NAT is not eligible";
+    udp4_reason = easytier_ipv4_nat_eligible(status.udp_nat,
+                                             g_assume_good_ipv4_nat) ?
+                  NULL : "UDP NAT is not eligible";
+    announce_topic(&g_tcp_topic, status.tcp4_port, AF_INET, tcp4_reason);
+    announce_topic(&g_udp_topic, status.udp4_port, AF_INET, udp4_reason);
+    if(g_quic)
+        announce_topic(&g_quic_topic, status.quic4_port, AF_INET, udp4_reason);
+
+    if(!g_ipv6)
         return;
-    }
-    if(g_verbose)
-        printf("easytier-peerdisc: announce yes: no peers found, eligible endpoint %s\n", url);
-    launch_search(aport, AF_INET);
-    if(g_ipv6)
-        launch_search(aport, AF_INET6);
+    ipv6_reason = status.public_ipv6[0] != '\0' ? NULL :
+                  "public IPv6 address unavailable";
+    announce_topic(&g_tcp_topic, status.tcp6_port, AF_INET6, ipv6_reason);
+    announce_topic(&g_udp_topic, status.udp6_port, AF_INET6, ipv6_reason);
 }
 
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
                    const infohash_t *udp_topic, const infohash_t *quic_topic,
-                   unsigned search_interval, int ipv6, int no_announce,
-                   int quic, int verbose)
+                    unsigned search_interval, int ipv6, int no_announce,
+                    int quic, int assume_good_ipv4_nat, int verbose)
 {
     if(network_name == NULL || tcp_topic == NULL || udp_topic == NULL ||
        (quic && quic_topic == NULL))
@@ -210,6 +224,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_ipv6 = ipv6;
     g_no_announce = no_announce;
     g_quic = quic;
+    g_assume_good_ipv4_nat = assume_good_ipv4_nat;
     g_verbose = verbose;
     g_last_search = 0;
     g_last_found = 0;
@@ -221,10 +236,13 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
 
 int discovery_start(void)
 {
-    if(g_verbose)
+    if(g_verbose) {
         printf("easytier-peerdisc: announce %s\n",
                g_no_announce ? "no: disabled by --no-announce" :
                "pending: query results and NAT eligibility required, initial delay 30 seconds");
+        if(g_assume_good_ipv4_nat)
+            printf("easytier-peerdisc: IPv4 NAT override enabled: treating TCP and UDP NAT as OpenInternet\n");
+    }
     g_start_time = time(NULL);
     start_query_round(g_start_time);
     return 0;

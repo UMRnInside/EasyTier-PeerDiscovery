@@ -6,9 +6,14 @@
 
 #include "easytier_rpc.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static char g_rpc_host[128] = "127.0.0.1";
 static unsigned short g_rpc_port = 15888;
@@ -61,23 +66,87 @@ static unsigned short listener_port(const char *listener)
     return (unsigned short)strtoul(p + 1, NULL, 10);
 }
 
+static int wait_for_cli(pid_t pid);
+
+static FILE *spawn_easytier_cli(pid_t *pid_out)
+{
+    char rpc_target[160];
+    int output_pipe[2];
+    pid_t pid;
+    FILE *stream;
+
+    snprintf(rpc_target, sizeof(rpc_target), "%s:%u", g_rpc_host, g_rpc_port);
+    if(pipe(output_pipe) != 0)
+        return NULL;
+
+    pid = fork();
+    if(pid < 0) {
+        close(output_pipe[0]);
+        close(output_pipe[1]);
+        return NULL;
+    }
+    if(pid == 0) {
+        char *const argv[] = {
+            (char *)"easytier-cli",
+            (char *)"-p",
+            rpc_target,
+            (char *)"node",
+            NULL,
+        };
+        int devnull;
+
+        close(output_pipe[0]);
+        if(dup2(output_pipe[1], STDOUT_FILENO) < 0)
+            _exit(127);
+        close(output_pipe[1]);
+
+        devnull = open("/dev/null", O_WRONLY);
+        if(devnull >= 0) {
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+
+    close(output_pipe[1]);
+    stream = fdopen(output_pipe[0], "r");
+    if(stream == NULL) {
+        close(output_pipe[0]);
+        wait_for_cli(pid);
+        return NULL;
+    }
+    *pid_out = pid;
+    return stream;
+}
+
+static int wait_for_cli(pid_t pid)
+{
+    int status;
+
+    while(waitpid(pid, &status, 0) < 0) {
+        if(errno != EINTR)
+            return -1;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+}
+
 int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
 {
-    char cmd[512];
     char line[512];
     char pubv4[64] = "";
     char pubv6[64] = "";
     char nattr[32] = "";
     char listener[128] = "";
     FILE *f;
+    pid_t pid;
+    int cli_status;
     unsigned short port;
 
     if(nat_ok != NULL)
         *nat_ok = 0;
 
-    snprintf(cmd, sizeof(cmd), "easytier-cli -p %s:%u node 2>/dev/null", g_rpc_host,
-             g_rpc_port);
-    f = popen(cmd, "r");
+    f = spawn_easytier_cli(&pid);
     if(f == NULL)
         return -1;
 
@@ -92,7 +161,10 @@ int easytier_rpc_get_endpoint(char *buf, size_t buflen, int *nat_ok)
         if(nattr[0] == '\0')
             md_field(line, "UDP Stun Type", nattr, sizeof(nattr));
     }
-    pclose(f);
+    fclose(f);
+    cli_status = wait_for_cli(pid);
+    if(cli_status != 0)
+        return -1;
 
     if(nattr[0] == '\0' ||
        (strcmp(nattr, "Public") != 0 && strcmp(nattr, "FriendlyNAT") != 0))

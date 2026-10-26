@@ -63,8 +63,11 @@ static int run(const peerdisc_args_t *args)
         fprintf(stderr, "easytier-peerdisc: failed to init dht\n");
         return -1;
     }
-    if(dht_runtime_add_bootstrap(g_bootstrap[0].host, g_bootstrap[0].port) != 0)
-        fprintf(stderr, "easytier-peerdisc: warning: failed to resolve bootstrap\n");
+    for(i = 0; i < sizeof(g_bootstrap) / sizeof(g_bootstrap[0]); i++) {
+        if(dht_runtime_add_bootstrap(g_bootstrap[i].host, g_bootstrap[i].port) != 0)
+            fprintf(stderr, "easytier-peerdisc: warning: failed to resolve bootstrap %s\n",
+                    g_bootstrap[i].host);
+    }
     for(i = 0; i < args->bootstrap_len; i++) {
         const char *colon;
         char host[256];

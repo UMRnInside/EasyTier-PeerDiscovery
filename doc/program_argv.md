@@ -23,7 +23,7 @@ interval) are **not** configurable from the CLI.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--dht-port <port>` | int | `0` (random) | DHT UDP listen port. |
-| `--bootstrap <host:port>` | string | built-in transmissionbt / libtorrent | Repeatable; add a custom bootstrap node. |
+| `--bootstrap <host:port>` | string | four built-in nodes | Repeatable; add a custom bootstrap node. The built-ins are Transmission, BitTorrent, µTorrent, and libtorrent. |
 | `--announce-interval <sec>` | int | `900` | Announce interval in seconds; minimum `300`, rejected below that. |
 | `--no-announce` | flag | off | Force query-only, override automatic announce decisions. |
 | `--ipv6` / `--no-ipv6` | flag | on | Dual-stack toggle (BEP32). |

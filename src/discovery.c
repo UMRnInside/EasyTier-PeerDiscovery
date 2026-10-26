@@ -91,6 +91,8 @@ static void maybe_announce(time_t now)
     if(aport == 0)
         return;
     launch_search(aport, AF_INET);
+    if(g_ipv6)
+        launch_search(aport, AF_INET6);
 }
 
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,

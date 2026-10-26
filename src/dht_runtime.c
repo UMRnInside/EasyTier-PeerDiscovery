@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200112L
+#endif
+
+#include "dht_runtime.h"
+
+#include "httpd.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <openssl/evp.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#define DHT_BUFSIZE 4096
+
+static int g_socket = -1;
+static int g_socket6 = -1;
+static unsigned char g_node_id[20];
+static volatile sig_atomic_t g_stop = 0;
+
+static int set_nonblocking(int fd)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    if(flags < 0)
+        return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+static int make_udp_socket(int family, unsigned short port, unsigned short *out_port)
+{
+    struct sockaddr_storage ss;
+    socklen_t len;
+    int fd;
+    int one = 1;
+
+    fd = socket(family, SOCK_DGRAM, 0);
+    if(fd < 0)
+        return -1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    if(family == AF_INET6)
+        setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof(one));
+
+    memset(&ss, 0, sizeof(ss));
+    if(family == AF_INET) {
+        struct sockaddr_in *a = (struct sockaddr_in *)&ss;
+        a->sin_family = AF_INET;
+        a->sin_addr.s_addr = INADDR_ANY;
+        a->sin_port = htons(port);
+    } else {
+        struct sockaddr_in6 *a = (struct sockaddr_in6 *)&ss;
+        a->sin6_family = AF_INET6;
+        a->sin6_addr = in6addr_any;
+        a->sin6_port = htons(port);
+    }
+    if(bind(fd, (struct sockaddr *)&ss, sizeof(ss)) < 0) {
+        close(fd);
+        return -1;
+    }
+    if(port == 0 && out_port != NULL) {
+        len = sizeof(ss);
+        if(getsockname(fd, (struct sockaddr *)&ss, &len) == 0) {
+            if(ss.ss_family == AF_INET)
+                *out_port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
+            else
+                *out_port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+        }
+    }
+    set_nonblocking(fd);
+    return fd;
+}
+
+int dht_runtime_init(unsigned short dht_port, int ipv6)
+{
+    unsigned short v4port = 0;
+    int rc;
+
+    g_socket = make_udp_socket(AF_INET, dht_port, &v4port);
+    if(g_socket < 0)
+        return -1;
+    g_socket6 = -1;
+    if(ipv6) {
+        g_socket6 = make_udp_socket(AF_INET6, v4port, NULL);
+        if(g_socket6 < 0)
+            g_socket6 = -1;
+    }
+    if(dht_random_bytes(g_node_id, sizeof(g_node_id)) != (int)sizeof(g_node_id))
+        goto fail;
+
+    rc = dht_init(g_socket, g_socket6, g_node_id, (const unsigned char *)"PD01");
+    if(rc < 0)
+        goto fail;
+    return 0;
+
+fail:
+    close(g_socket);
+    g_socket = -1;
+    if(g_socket6 >= 0) {
+        close(g_socket6);
+        g_socket6 = -1;
+    }
+    return -1;
+}
+
+int dht_runtime_add_bootstrap(const char *host, unsigned short port)
+{
+    struct addrinfo hints;
+    struct addrinfo *res = NULL;
+    struct addrinfo *ai;
+    char portstr[8];
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    snprintf(portstr, sizeof(portstr), "%u", port);
+    if(getaddrinfo(host, portstr, &hints, &res) != 0)
+        return -1;
+    for(ai = res; ai != NULL; ai = ai->ai_next)
+        dht_ping_node(ai->ai_addr, (int)ai->ai_addrlen);
+    freeaddrinfo(res);
+    return 0;
+}
+
+int dht_runtime_search(const unsigned char *id, int port, int af,
+                       dht_callback_t *cb, void *closure)
+{
+    return dht_search(id, port, af, cb, closure);
+}
+
+static void handle_udp(int fd, dht_callback_t *cb, void *closure)
+{
+    struct sockaddr_storage from;
+    socklen_t fromlen = sizeof(from);
+    char buf[DHT_BUFSIZE + 1];
+    ssize_t len;
+    time_t tosleep = 0;
+
+    len = recvfrom(fd, buf, DHT_BUFSIZE, 0, (struct sockaddr *)&from, &fromlen);
+    if(len < 0)
+        return;
+    buf[len] = '\0';
+    dht_periodic(buf, (size_t)len, (struct sockaddr *)&from, (int)fromlen,
+                 &tosleep, cb, closure);
+}
+
+int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
+                    dht_runtime_hook_t hook, void *hook_closure)
+{
+    while(!g_stop) {
+        time_t tosleep = 0;
+        fd_set rfds;
+        int nfds = 0;
+        struct timeval tv;
+        int rc;
+
+        dht_periodic(NULL, 0, NULL, 0, &tosleep, cb, cb_closure);
+        if(hook != NULL)
+            hook(hook_closure);
+
+        FD_ZERO(&rfds);
+        if(http_fd >= 0) {
+            FD_SET(http_fd, &rfds);
+            if(http_fd >= nfds)
+                nfds = http_fd + 1;
+        }
+        if(g_socket >= 0) {
+            FD_SET(g_socket, &rfds);
+            if(g_socket >= nfds)
+                nfds = g_socket + 1;
+        }
+        if(g_socket6 >= 0) {
+            FD_SET(g_socket6, &rfds);
+            if(g_socket6 >= nfds)
+                nfds = g_socket6 + 1;
+        }
+
+        if(tosleep < 0)
+            tosleep = 0;
+        if(tosleep > 3600)
+            tosleep = 3600;
+        tv.tv_sec = (time_t)tosleep;
+        tv.tv_usec = 0;
+
+        rc = select(nfds, &rfds, NULL, NULL, &tv);
+        if(rc < 0) {
+            if(errno == EINTR)
+                continue;
+            break;
+        }
+        if(http_fd >= 0 && FD_ISSET(http_fd, &rfds))
+            httpd_accept();
+        if(g_socket >= 0 && FD_ISSET(g_socket, &rfds))
+            handle_udp(g_socket, cb, cb_closure);
+        if(g_socket6 >= 0 && FD_ISSET(g_socket6, &rfds))
+            handle_udp(g_socket6, cb, cb_closure);
+    }
+    return 0;
+}
+
+int dht_runtime_shutdown(void)
+{
+    g_stop = 1;
+    if(g_socket >= 0) {
+        dht_uninit();
+        close(g_socket);
+        g_socket = -1;
+    }
+    if(g_socket6 >= 0) {
+        close(g_socket6);
+        g_socket6 = -1;
+    }
+    return 0;
+}
+
+int dht_sendto(int sockfd, const void *buf, int len, int flags,
+               const struct sockaddr *to, int tolen)
+{
+    return sendto(sockfd, buf, len, flags, to, tolen);
+}
+
+int dht_blacklisted(const struct sockaddr *sa, int salen)
+{
+    (void)sa;
+    (void)salen;
+    return 0;
+}
+
+void dht_hash(void *hash_return, int hash_size,
+              const void *v1, int len1,
+              const void *v2, int len2,
+              const void *v3, int len3)
+{
+    EVP_MD_CTX *ctx;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    ctx = EVP_MD_CTX_new();
+    if(ctx == NULL)
+        return;
+    EVP_DigestInit_ex(ctx, EVP_sha1(), NULL);
+    EVP_DigestUpdate(ctx, v1, len1);
+    EVP_DigestUpdate(ctx, v2, len2);
+    EVP_DigestUpdate(ctx, v3, len3);
+    EVP_DigestFinal_ex(ctx, digest, &digest_len);
+    EVP_MD_CTX_free(ctx);
+    if(hash_size > (int)digest_len)
+        memset((char *)hash_return, 0, hash_size);
+    memcpy(hash_return, digest, hash_size > (int)digest_len ? (int)digest_len : hash_size);
+}
+
+int dht_random_bytes(void *buf, size_t size)
+{
+    int fd;
+    ssize_t rc;
+    fd = open("/dev/urandom", O_RDONLY);
+    if(fd < 0)
+        return -1;
+    rc = read(fd, buf, size);
+    close(fd);
+    return (int)rc;
+}

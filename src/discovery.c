@@ -19,6 +19,7 @@ static infohash_t g_tcp_topic;
 static infohash_t g_quic_topic;
 static unsigned g_search_interval;
 static int g_ipv6;
+static int g_no_announce;
 
 static time_t g_start_time;
 static time_t g_last_search;
@@ -71,7 +72,7 @@ static void maybe_announce(time_t now)
     int nat_ok = 0;
     unsigned short aport;
 
-    if(g_last_found)
+    if(g_no_announce || g_last_found)
         return;
     if(now - g_start_time < MIN_UPTIME_BEFORE_ANNOUNCE)
         return;
@@ -85,7 +86,7 @@ static void maybe_announce(time_t now)
 
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
                    const infohash_t *quic_topic, unsigned search_interval,
-                   int ipv6)
+                   int ipv6, int no_announce)
 {
     if(network_name == NULL || tcp_topic == NULL || quic_topic == NULL)
         return -1;
@@ -94,6 +95,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_quic_topic = *quic_topic;
     g_search_interval = search_interval;
     g_ipv6 = ipv6;
+    g_no_announce = no_announce;
     g_last_search = 0;
     g_last_found = 0;
     return 0;

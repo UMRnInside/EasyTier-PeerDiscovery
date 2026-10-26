@@ -76,7 +76,8 @@ static int run(const peerdisc_args_t *args)
     }
 
     if(discovery_init(args->network_name, &tcp_topic, &quic_topic,
-                      args->announce_interval, args->ipv6) != 0) {
+                       args->announce_interval, args->ipv6,
+                       args->no_announce) != 0) {
         fprintf(stderr, "easytier-peerdisc: failed to init discovery\n");
         return -1;
     }

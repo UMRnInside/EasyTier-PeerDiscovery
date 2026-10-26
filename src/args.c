@@ -20,12 +20,14 @@ enum {
     OPT_NO_IPV6,
     OPT_QUIC,
     OPT_RPC,
+    OPT_SECRET_HASH,
     OPT_VERSION,
 };
 
 static const struct option long_options[] = {
     {"network-name", required_argument, NULL, 'n'},
     {"secret", required_argument, NULL, 'k'},
+    {"secret-hash", required_argument, NULL, OPT_SECRET_HASH},
     {"http", required_argument, NULL, OPT_HTTP},
     {"dht-port", required_argument, NULL, OPT_DHT_PORT},
     {"bootstrap", required_argument, NULL, OPT_BOOTSTRAP},
@@ -93,7 +95,8 @@ void args_print_usage(FILE *out)
             "\n"
             "Core (required):\n"
             "  -n, --network-name <name>    Network name (required)\n"
-            "  -k, --secret <secret>        Network secret (required)\n"
+            "  -k, --secret <secret>        Network secret\n"
+            "      --secret-hash <hex>      Precomputed 32-byte secret hash\n"
             "\n"
             "HTTP /endpoint service:\n"
             "      --http <host:port>       Listen address (default 127.0.0.1:8080)\n"
@@ -144,6 +147,10 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
         case 'k':
             if(out->secret == NULL)
                 out->secret = strdup(optarg);
+            break;
+        case OPT_SECRET_HASH:
+            if(out->secret_hash == NULL)
+                out->secret_hash = strdup(optarg);
             break;
         case 'v':
             out->verbose = 1;
@@ -228,15 +235,19 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
         if(env != NULL && env[0] != '\0')
             out->network_name = strdup(env);
     }
-    if(out->secret == NULL) {
+    if(out->secret == NULL && out->secret_hash == NULL) {
         env = getenv("ET_NETWORK_SECRET");
         if(env != NULL && env[0] != '\0')
             out->secret = strdup(env);
     }
 
-    if(out->network_name == NULL || out->secret == NULL) {
+    if(out->secret != NULL && out->secret_hash != NULL) {
+        fprintf(stderr, "easytier-peerdisc: --secret and --secret-hash are mutually exclusive\n");
+        goto fail;
+    }
+    if(out->network_name == NULL || (out->secret == NULL && out->secret_hash == NULL)) {
         fprintf(stderr,
-                "easytier-peerdisc: network name and secret are required via options or environment\n");
+                "easytier-peerdisc: network name and a secret credential are required\n");
         args_print_usage(stderr);
         goto fail;
     }
@@ -258,6 +269,7 @@ void args_free(peerdisc_args_t *a)
     size_t i;
     free(a->network_name);
     free(a->secret);
+    free(a->secret_hash);
     free(a->http_host);
     free(a->rpc_host);
     for(i = 0; i < a->bootstrap_len; i++)

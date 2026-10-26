@@ -16,6 +16,7 @@
 typedef struct {
     char *network_name;
     char *secret;
+    char *secret_hash;
     char *http_host;
     unsigned short http_port;
     unsigned short dht_port;

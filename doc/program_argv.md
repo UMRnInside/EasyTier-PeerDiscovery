@@ -10,11 +10,25 @@ contract are **not** configurable from the CLI.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `-n, --network-name <name>` | string | required | Network name, same as `easytier-core -n`; part of infohash derivation. |
-| `-k, --secret <secret>` | string | required | Network secret, same as `easytier-core -k`; input to the KDF. |
+| `-k, --secret <secret>` | string | conditional | Network secret, same as `easytier-core -k`; input to the KDF. Mutually exclusive with `--secret-hash`. |
+| `--secret-hash <hex>` | 64 hex chars | conditional | Precomputed 32-byte Argon2id result from `et-secret-hash`. Mutually exclusive with `--secret`. |
 
 When either option is omitted, `ET_NETWORK_NAME` and `ET_NETWORK_SECRET` are
 used respectively. Explicit command-line options take precedence over the
 environment.
+
+Exactly one of `--secret`, `ET_NETWORK_SECRET`, or `--secret-hash` supplies the
+secret credential. Generate a reusable hash without changing the DHT protocol:
+
+```sh
+HASH=$(et-secret-hash --network-name mynet --secret mysecret)
+./easytier-peerdisc --network-name mynet --secret-hash "$HASH"
+```
+
+`--network-name` is optional for `et-secret-hash` and is accepted as context;
+the frozen protocol applies Argon2id to the secret alone. The network name is
+still required when starting `easytier-peerdisc` because it participates in the
+subsequent SHA-256 topic derivation.
 
 ## HTTP `/endpoint` service
 

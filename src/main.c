@@ -34,14 +34,25 @@ static int run(const peerdisc_args_t *args)
     infohash_t tcp_topic;
     infohash_t udp_topic;
     infohash_t quic_topic;
+    uint8_t secret_hash[SECRET_HASH_LEN];
     int http_fd;
     size_t i;
     int rc;
 
-    if(infohash_derive(&tcp_topic, args->secret, args->network_name, "tcp") != 0 ||
-       infohash_derive(&udp_topic, args->secret, args->network_name, "udp") != 0 ||
+    if((args->secret_hash != NULL &&
+        secret_hash_parse(secret_hash, args->secret_hash) != 0) ||
+       (args->secret != NULL && secret_hash_derive(secret_hash, args->secret) != 0)) {
+        fprintf(stderr, "easytier-peerdisc: invalid or unusable secret hash\n");
+        return -1;
+    }
+
+    if(infohash_derive_from_secret_hash(&tcp_topic, secret_hash,
+                                        args->network_name, "tcp") != 0 ||
+       infohash_derive_from_secret_hash(&udp_topic, secret_hash,
+                                        args->network_name, "udp") != 0 ||
        (args->quic &&
-        infohash_derive(&quic_topic, args->secret, args->network_name, "quic") != 0)) {
+        infohash_derive_from_secret_hash(&quic_topic, secret_hash,
+                                         args->network_name, "quic") != 0)) {
         fprintf(stderr, "easytier-peerdisc: failed to derive infohash\n");
         return -1;
     }

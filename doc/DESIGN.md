@@ -31,6 +31,10 @@ infohash = digest[0..20]                                    # first 20 bytes →
 - `KDF`: **mandatory slow hash** (resist offline brute force on a low-entropy
   secret after DHT exposure). Fixed as **Argon2id** (RFC 9106 SECOND
   RECOMMENDED: `m=64 MiB, t=3, p=1`, 32-byte output), provided by `libargon2`.
+- `--secret-hash` accepts `K` as exactly 64 hexadecimal characters, allowing
+  Argon2id to be run ahead of time by `et-secret-hash`. `network_name` remains
+  a separate mandatory input, so precomputation does not change the frozen
+  derivation or DHT compatibility.
 - Two default namespaces:
   - `scheme="tcp"` → TCP endpoints
   - `scheme="udp"` → UDP endpoints

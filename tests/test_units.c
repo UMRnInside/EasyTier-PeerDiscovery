@@ -4,6 +4,7 @@
 #include "infohash.h"
 #include "unity.h"
 
+#include <stdio.h>
 #include <string.h>
 
 void setUp(void)
@@ -34,6 +35,37 @@ void test_infohash_scheme_separated(void)
     TEST_ASSERT_TRUE(memcmp(a.hash, b.hash, INFOHASH_LEN) != 0);
     TEST_ASSERT_TRUE(memcmp(a.hash, c.hash, INFOHASH_LEN) != 0);
     TEST_ASSERT_TRUE(memcmp(b.hash, c.hash, INFOHASH_LEN) != 0);
+}
+
+void test_precomputed_secret_hash_matches_direct_derivation(void)
+{
+    uint8_t secret_hash[SECRET_HASH_LEN];
+    uint8_t parsed[SECRET_HASH_LEN];
+    infohash_t direct;
+    infohash_t precomputed;
+    char hex[SECRET_HASH_LEN * 2 + 1];
+    size_t i;
+
+    TEST_ASSERT_EQUAL_INT(0, secret_hash_derive(secret_hash, "mysecret"));
+    for(i = 0; i < SECRET_HASH_LEN; i++)
+        snprintf(hex + i * 2, 3, "%02x", secret_hash[i]);
+    TEST_ASSERT_EQUAL_INT(0, secret_hash_parse(parsed, hex));
+    TEST_ASSERT_EQUAL_MEMORY(secret_hash, parsed, SECRET_HASH_LEN);
+    TEST_ASSERT_EQUAL_INT(0, infohash_derive(&direct, "mysecret", "mynet", "tcp"));
+    TEST_ASSERT_EQUAL_INT(0, infohash_derive_from_secret_hash(
+                                 &precomputed, parsed, "mynet", "tcp"));
+    TEST_ASSERT_EQUAL_MEMORY(direct.hash, precomputed.hash, INFOHASH_LEN);
+}
+
+void test_secret_hash_rejects_invalid_hex(void)
+{
+    uint8_t secret_hash[SECRET_HASH_LEN];
+
+    TEST_ASSERT_EQUAL_INT(-1, secret_hash_parse(secret_hash, "abcd"));
+    TEST_ASSERT_EQUAL_INT(
+        -1,
+        secret_hash_parse(secret_hash,
+                          "000000000000000000000000000000000000000000000000000000000000000g"));
 }
 
 void test_endpoint_random_selection(void)
@@ -68,6 +100,8 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_infohash_deterministic);
     RUN_TEST(test_infohash_scheme_separated);
+    RUN_TEST(test_precomputed_secret_hash_matches_direct_derivation);
+    RUN_TEST(test_secret_hash_rejects_invalid_hex);
     RUN_TEST(test_endpoint_random_selection);
     return UNITY_END();
 }

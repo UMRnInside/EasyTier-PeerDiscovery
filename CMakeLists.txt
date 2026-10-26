@@ -31,6 +31,11 @@ add_executable(easytier-peerdisc
     src/easytier_rpc.c
 )
 
+add_executable(et-secret-hash
+    src/secret_hash.c
+    src/infohash.c
+)
+
 target_include_directories(easytier-peerdisc PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${DHT_INCLUDES}
@@ -39,13 +44,19 @@ target_include_directories(easytier-peerdisc PRIVATE
 
 target_link_libraries(easytier-peerdisc PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgConfig::ARGON2)
 
+target_include_directories(et-secret-hash PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(et-secret-hash PRIVATE OpenSSL::Crypto PkgConfig::ARGON2)
+target_compile_features(et-secret-hash PRIVATE c_std_11)
+
 # Keep the submodule pristine; compile dht.c as part of our target.
 set_target_properties(easytier-peerdisc PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
 )
 
-install(TARGETS easytier-peerdisc RUNTIME DESTINATION bin)
+install(TARGETS easytier-peerdisc et-secret-hash RUNTIME DESTINATION bin)
 
 enable_testing()
 

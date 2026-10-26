@@ -118,6 +118,7 @@ void args_print_usage(FILE *out)
 
 int args_parse(int argc, char **argv, peerdisc_args_t *out)
 {
+    const char *env;
     int opt;
 
     memset(out, 0, sizeof(*out));
@@ -222,8 +223,20 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
         }
     }
 
+    if(out->network_name == NULL) {
+        env = getenv("ET_NETWORK_NAME");
+        if(env != NULL && env[0] != '\0')
+            out->network_name = strdup(env);
+    }
+    if(out->secret == NULL) {
+        env = getenv("ET_NETWORK_SECRET");
+        if(env != NULL && env[0] != '\0')
+            out->secret = strdup(env);
+    }
+
     if(out->network_name == NULL || out->secret == NULL) {
-        fprintf(stderr, "easytier-peerdisc: --network-name and --secret are required\n");
+        fprintf(stderr,
+                "easytier-peerdisc: network name and secret are required via options or environment\n");
         args_print_usage(stderr);
         goto fail;
     }

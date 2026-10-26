@@ -12,6 +12,10 @@ contract are **not** configurable from the CLI.
 | `-n, --network-name <name>` | string | required | Network name, same as `easytier-core -n`; part of infohash derivation. |
 | `-k, --secret <secret>` | string | required | Network secret, same as `easytier-core -k`; input to the KDF. |
 
+When either option is omitted, `ET_NETWORK_NAME` and `ET_NETWORK_SECRET` are
+used respectively. Explicit command-line options take precedence over the
+environment.
+
 ## HTTP `/endpoint` service
 
 | Option | Type | Default | Description |

@@ -57,7 +57,7 @@ subsequent SHA-256 topic derivation.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `-v, --verbose` | flag | off | Verbose logging. |
+| `-v, --verbose` | flag | off | Log every Mainline DHT peer result and protocol/address-family search completion. |
 | `-h, --help` | flag | — | Usage. |
 | `--version` | flag | — | Version number. |
 

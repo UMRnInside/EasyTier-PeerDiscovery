@@ -10,7 +10,7 @@
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
                    const infohash_t *udp_topic, const infohash_t *quic_topic,
                    unsigned search_interval, int ipv6, int no_announce,
-                   int quic);
+                   int quic, int verbose);
 int discovery_start(void);
 int discovery_stop(void);
 

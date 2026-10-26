@@ -7,6 +7,7 @@
 #include "endpoint.h"
 
 #include <arpa/inet.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -28,6 +29,7 @@ static unsigned g_search_interval;
 static int g_ipv6;
 static int g_no_announce;
 static int g_quic;
+static int g_verbose;
 
 static time_t g_start_time;
 static time_t g_last_search;
@@ -44,9 +46,28 @@ static unsigned short url_port(const char *url)
     return (unsigned short)strtoul(p + 1, NULL, 10);
 }
 
+static const char *topic_scheme(const infohash_t *topic)
+{
+    if(memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
+        return "tcp";
+    if(memcmp(topic->hash, g_udp_topic.hash, INFOHASH_LEN) == 0)
+        return "udp";
+    return "quic";
+}
+
+static const char *address_family_name(int af)
+{
+    return af == AF_INET6 ? "ipv6" : "ipv4";
+}
+
 static int search_topic(const infohash_t *topic, int port, int af)
 {
-    return dht_runtime_search(topic->hash, port, af, discovery_dht_callback, NULL);
+    int rc = dht_runtime_search(topic->hash, port, af,
+                                discovery_dht_callback, NULL);
+    if(rc < 0 && g_verbose)
+        printf("easytier-peerdisc: dht query %s %s failed to start\n",
+               topic_scheme(topic), address_family_name(af));
+    return rc;
 }
 
 static void launch_search(int port, int af)
@@ -119,17 +140,15 @@ static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
         inet_ntop(AF_INET6, p, addr, sizeof(addr));
         port = (unsigned short)((p[16] << 8) | p[17]);
     }
-    if(memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
-        scheme = "tcp";
-    else if(memcmp(topic->hash, g_udp_topic.hash, INFOHASH_LEN) == 0)
-        scheme = "udp";
-    else
-        scheme = "quic";
+    scheme = topic_scheme(topic);
     if(af == AF_INET)
         snprintf(url, sizeof(url), "%s://%s:%u", scheme, addr, port);
     else
         snprintf(url, sizeof(url), "%s://[%s]:%u", scheme, addr, port);
     endpoint_add(url);
+    if(g_verbose)
+        printf("easytier-peerdisc: dht query %s %s found %s\n",
+               scheme, address_family_name(af), url);
 }
 
 static void maybe_announce(time_t now)
@@ -156,7 +175,7 @@ static void maybe_announce(time_t now)
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
                    const infohash_t *udp_topic, const infohash_t *quic_topic,
                    unsigned search_interval, int ipv6, int no_announce,
-                   int quic)
+                   int quic, int verbose)
 {
     if(network_name == NULL || tcp_topic == NULL || udp_topic == NULL ||
        (quic && quic_topic == NULL))
@@ -170,6 +189,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_ipv6 = ipv6;
     g_no_announce = no_announce;
     g_quic = quic;
+    g_verbose = verbose;
     g_last_search = 0;
     g_last_found = 0;
     g_query_pending = 0;
@@ -219,6 +239,9 @@ void discovery_dht_callback(void *closure, int event,
         }
         break;
     case DHT_EVENT_SEARCH_DONE:
+        if(g_verbose)
+            printf("easytier-peerdisc: dht query %s ipv4 completed\n",
+                   topic_scheme((const infohash_t *)info_hash));
         bit = query_bit(info_hash, AF_INET);
         if((g_query_pending & bit) != 0) {
             g_query_pending &= ~bit;
@@ -227,6 +250,9 @@ void discovery_dht_callback(void *closure, int event,
         }
         break;
     case DHT_EVENT_SEARCH_DONE6:
+        if(g_verbose)
+            printf("easytier-peerdisc: dht query %s ipv6 completed\n",
+                   topic_scheme((const infohash_t *)info_hash));
         bit = query_bit(info_hash, AF_INET6);
         if((g_query_pending & bit) != 0) {
             g_query_pending &= ~bit;

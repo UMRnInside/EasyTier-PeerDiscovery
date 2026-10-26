@@ -31,10 +31,29 @@ static int g_socket6 = -1;
 static unsigned char g_node_id[20];
 static volatile sig_atomic_t g_stop = 0;
 static time_t g_last_state_save;
+static int g_verbose;
+
+static void log_state(const char *operation, int status, const dht_state_t *state)
+{
+    char directory[4096];
+
+    if(!g_verbose)
+        return;
+    if(dht_state_default_directory(directory, sizeof(directory)) != 0)
+        snprintf(directory, sizeof(directory), "<unavailable>");
+    printf("easytier-peerdisc: dht state %s %s: %s/dht-state.bin",
+           operation, status < 0 ? "failed" : status == 0 ? "not found" : "succeeded",
+           directory);
+    if(status > 0)
+        printf(" (ipv4 nodes %d, ipv6 nodes %d)",
+               state->nodes4_len, state->nodes6_len);
+    printf("\n");
+}
 
 static int save_dht_state(void)
 {
     dht_state_t state;
+    int rc;
 
     memset(&state, 0, sizeof(state));
     memcpy(state.node_id, g_node_id, sizeof(g_node_id));
@@ -43,7 +62,9 @@ static int save_dht_state(void)
     state.nodes6_len = DHT_STATE_MAX_NODES;
     dht_get_nodes(state.nodes4, &state.nodes4_len,
                   state.nodes6, &state.nodes6_len);
-    return dht_state_save(&state);
+    rc = dht_state_save(&state);
+    log_state("save", rc == 0 ? 1 : -1, &state);
+    return rc;
 }
 
 static int set_nonblocking(int fd)
@@ -97,7 +118,7 @@ static int make_udp_socket(int family, unsigned short port, unsigned short *out_
     return fd;
 }
 
-int dht_runtime_init(unsigned short dht_port, int ipv6)
+int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose)
 {
     dht_state_t state;
     unsigned short v4port = 0;
@@ -105,6 +126,8 @@ int dht_runtime_init(unsigned short dht_port, int ipv6)
     int i;
     int rc;
 
+    g_verbose = verbose;
+    g_stop = 0;
     g_socket = make_udp_socket(AF_INET, dht_port, &v4port);
     if(g_socket < 0)
         return -1;
@@ -115,6 +138,7 @@ int dht_runtime_init(unsigned short dht_port, int ipv6)
             g_socket6 = -1;
     }
     state_status = dht_state_load(&state);
+    log_state("load", state_status, &state);
     if(state_status > 0 && state.has_node_id)
         memcpy(g_node_id, state.node_id, sizeof(g_node_id));
     else if(dht_random_bytes(g_node_id, sizeof(g_node_id)) != (int)sizeof(g_node_id))
@@ -246,6 +270,11 @@ int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
             handle_udp(g_socket6, cb, cb_closure);
     }
     return 0;
+}
+
+void dht_runtime_request_stop(void)
+{
+    g_stop = 1;
 }
 
 int dht_runtime_shutdown(void)

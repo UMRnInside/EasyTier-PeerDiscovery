@@ -26,7 +26,7 @@ static const struct {
 static void on_signal(int sig)
 {
     (void)sig;
-    dht_runtime_shutdown();
+    dht_runtime_request_stop();
 }
 
 static int run(const peerdisc_args_t *args)
@@ -70,7 +70,7 @@ static int run(const peerdisc_args_t *args)
         fprintf(stderr, "easytier-peerdisc: invalid rpc target\n");
         return -1;
     }
-    if(dht_runtime_init(args->dht_port, args->ipv6) != 0) {
+    if(dht_runtime_init(args->dht_port, args->ipv6, args->verbose) != 0) {
         fprintf(stderr, "easytier-peerdisc: failed to init dht\n");
         return -1;
     }

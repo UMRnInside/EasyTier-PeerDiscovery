@@ -13,13 +13,14 @@
 
 typedef void (*dht_runtime_hook_t)(void *closure);
 
-int dht_runtime_init(unsigned short dht_port, int ipv6);
+int dht_runtime_init(unsigned short dht_port, int ipv6, int verbose);
 int dht_runtime_add_bootstrap(const char *host, unsigned short port);
 int dht_runtime_search(const unsigned char *id, int port, int af,
                        dht_callback_t *cb, void *closure);
 int dht_runtime_run(int http_fd, dht_callback_t *cb, void *cb_closure,
                     dht_runtime_hook_t hook, void *hook_closure);
 int dht_runtime_shutdown(void);
+void dht_runtime_request_stop(void);
 
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
                const struct sockaddr *to, int tolen);

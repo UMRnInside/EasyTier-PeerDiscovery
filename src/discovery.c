@@ -33,6 +33,7 @@ static time_t g_start_time;
 static time_t g_last_search;
 static int g_last_found;
 static unsigned g_query_pending;
+static int g_query_failed;
 static int g_announce_checked;
 
 static unsigned short url_port(const char *url)
@@ -71,13 +72,16 @@ static unsigned query_bit(const unsigned char *info_hash, int af)
 
 static void start_query(const infohash_t *topic, int af, unsigned bit)
 {
-    if(search_topic(topic, 0, af) < 0)
+    if(search_topic(topic, 0, af) < 0) {
         g_query_pending &= ~bit;
+        g_query_failed = 1;
+    }
 }
 
 static void start_query_round(time_t now)
 {
     g_last_found = 0;
+    g_query_failed = 0;
     g_announce_checked = 0;
     g_query_pending = QUERY_TCP4 | QUERY_UDP4;
     if(g_quic)
@@ -134,7 +138,7 @@ static void maybe_announce(time_t now)
     int nat_ok = 0;
     unsigned short aport;
 
-    if(g_no_announce || g_last_found || g_announce_checked)
+    if(g_no_announce || g_last_found || g_query_failed || g_announce_checked)
         return;
     if(now - g_start_time < INITIAL_ANNOUNCE_DELAY)
         return;
@@ -169,6 +173,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_last_search = 0;
     g_last_found = 0;
     g_query_pending = 0;
+    g_query_failed = 0;
     g_announce_checked = 0;
     return 0;
 }

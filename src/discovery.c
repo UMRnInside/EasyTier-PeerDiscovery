@@ -13,6 +13,12 @@
 
 #define MIN_UPTIME_BEFORE_ANNOUNCE 300
 #define ANNOUNCE_ADDR_LEN 64
+#define QUERY_TCP4 (1u << 0)
+#define QUERY_UDP4 (1u << 1)
+#define QUERY_QUIC4 (1u << 2)
+#define QUERY_TCP6 (1u << 3)
+#define QUERY_UDP6 (1u << 4)
+#define QUERY_QUIC6 (1u << 5)
 
 static char g_network_name[128];
 static infohash_t g_tcp_topic;
@@ -26,6 +32,7 @@ static int g_quic;
 static time_t g_start_time;
 static time_t g_last_search;
 static int g_last_found;
+static unsigned g_query_pending;
 
 static unsigned short url_port(const char *url)
 {
@@ -35,9 +42,9 @@ static unsigned short url_port(const char *url)
     return (unsigned short)strtoul(p + 1, NULL, 10);
 }
 
-static void search_topic(const infohash_t *topic, int port, int af)
+static int search_topic(const infohash_t *topic, int port, int af)
 {
-    dht_runtime_search(topic->hash, port, af, discovery_dht_callback, NULL);
+    return dht_runtime_search(topic->hash, port, af, discovery_dht_callback, NULL);
 }
 
 static void launch_search(int port, int af)
@@ -46,6 +53,50 @@ static void launch_search(int port, int af)
     search_topic(&g_udp_topic, port, af);
     if(g_quic)
         search_topic(&g_quic_topic, port, af);
+}
+
+static unsigned query_bit(const unsigned char *info_hash, int af)
+{
+    unsigned family_offset = af == AF_INET6 ? 3u : 0u;
+
+    if(memcmp(info_hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
+        return 1u << family_offset;
+    if(memcmp(info_hash, g_udp_topic.hash, INFOHASH_LEN) == 0)
+        return 1u << (family_offset + 1u);
+    if(g_quic && memcmp(info_hash, g_quic_topic.hash, INFOHASH_LEN) == 0)
+        return 1u << (family_offset + 2u);
+    return 0;
+}
+
+static void start_query(const infohash_t *topic, int af, unsigned bit)
+{
+    if(search_topic(topic, 0, af) < 0)
+        g_query_pending &= ~bit;
+}
+
+static void start_query_round(time_t now)
+{
+    g_last_found = 0;
+    g_query_pending = QUERY_TCP4 | QUERY_UDP4;
+    if(g_quic)
+        g_query_pending |= QUERY_QUIC4;
+    if(g_ipv6) {
+        g_query_pending |= QUERY_TCP6 | QUERY_UDP6;
+        if(g_quic)
+            g_query_pending |= QUERY_QUIC6;
+    }
+
+    start_query(&g_tcp_topic, AF_INET, QUERY_TCP4);
+    start_query(&g_udp_topic, AF_INET, QUERY_UDP4);
+    if(g_quic)
+        start_query(&g_quic_topic, AF_INET, QUERY_QUIC4);
+    if(g_ipv6) {
+        start_query(&g_tcp_topic, AF_INET6, QUERY_TCP6);
+        start_query(&g_udp_topic, AF_INET6, QUERY_UDP6);
+        if(g_quic)
+            start_query(&g_quic_topic, AF_INET6, QUERY_QUIC6);
+    }
+    g_last_search = now;
 }
 
 static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
@@ -114,17 +165,14 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_quic = quic;
     g_last_search = 0;
     g_last_found = 0;
+    g_query_pending = 0;
     return 0;
 }
 
 int discovery_start(void)
 {
     g_start_time = time(NULL);
-    g_last_found = 0;
-    launch_search(0, AF_INET);
-    if(g_ipv6)
-        launch_search(0, AF_INET6);
-    g_last_search = time(NULL);
+    start_query_round(g_start_time);
     return 0;
 }
 
@@ -138,22 +186,43 @@ void discovery_dht_callback(void *closure, int event,
                             size_t data_len)
 {
     const unsigned char *p;
+    unsigned bit;
     size_t i;
     (void)closure;
 
     switch(event) {
     case DHT_EVENT_VALUES:
-        g_last_found = 1;
+        bit = query_bit(info_hash, AF_INET);
+        if((g_query_pending & bit) != 0)
+            g_last_found = 1;
         for(i = 0; i + 6 <= data_len; i += 6) {
             p = (const unsigned char *)data + i;
             add_peer(AF_INET, p, (const infohash_t *)info_hash);
         }
         break;
     case DHT_EVENT_VALUES6:
-        g_last_found = 1;
+        bit = query_bit(info_hash, AF_INET6);
+        if((g_query_pending & bit) != 0)
+            g_last_found = 1;
         for(i = 0; i + 18 <= data_len; i += 18) {
             p = (const unsigned char *)data + i;
             add_peer(AF_INET6, p, (const infohash_t *)info_hash);
+        }
+        break;
+    case DHT_EVENT_SEARCH_DONE:
+        bit = query_bit(info_hash, AF_INET);
+        if((g_query_pending & bit) != 0) {
+            g_query_pending &= ~bit;
+            if(g_query_pending == 0)
+                maybe_announce(time(NULL));
+        }
+        break;
+    case DHT_EVENT_SEARCH_DONE6:
+        bit = query_bit(info_hash, AF_INET6);
+        if((g_query_pending & bit) != 0) {
+            g_query_pending &= ~bit;
+            if(g_query_pending == 0)
+                maybe_announce(time(NULL));
         }
         break;
     default:
@@ -167,13 +236,8 @@ void discovery_periodic(void *closure)
     (void)closure;
 
     now = time(NULL);
-    if(now - g_last_search < (time_t)g_search_interval)
+    if(g_query_pending != 0 || now - g_last_search < (time_t)g_search_interval)
         return;
 
-    g_last_found = 0;
-    launch_search(0, AF_INET);
-    if(g_ipv6)
-        launch_search(0, AF_INET6);
-    g_last_search = now;
-    maybe_announce(now);
+    start_query_round(now);
 }

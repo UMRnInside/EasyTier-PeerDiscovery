@@ -19,7 +19,6 @@ enum {
     OPT_IPV6,
     OPT_NO_IPV6,
     OPT_RPC,
-    OPT_ANNOUNCE_PORT,
     OPT_VERSION,
 };
 
@@ -34,7 +33,6 @@ static const struct option long_options[] = {
     {"ipv6", no_argument, NULL, OPT_IPV6},
     {"no-ipv6", no_argument, NULL, OPT_NO_IPV6},
     {"rpc", required_argument, NULL, OPT_RPC},
-    {"announce-port", required_argument, NULL, OPT_ANNOUNCE_PORT},
     {"verbose", no_argument, NULL, 'v'},
     {"help", no_argument, NULL, 'h'},
     {"version", no_argument, NULL, OPT_VERSION},
@@ -107,7 +105,6 @@ void args_print_usage(FILE *out)
             "\n"
             "External endpoint source (easytier-cli RPC):\n"
             "      --rpc <host:port>        easytier-cli rpc portal (default 127.0.0.1:%u)\n"
-            "      --announce-port <port>   Published data-plane port (default auto)\n"
             "\n"
             "Generic:\n"
             "  -v, --verbose                Verbose logging\n"
@@ -128,7 +125,6 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
     out->ipv6 = 1;
     out->rpc_host = strdup("127.0.0.1");
     out->rpc_port = DEFAULT_RPC_PORT;
-    out->announce_port = 0;
     if(out->http_host == NULL || out->rpc_host == NULL) {
         args_free(out);
         fprintf(stderr, "easytier-peerdisc: out of memory\n");
@@ -211,15 +207,6 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
             free(out->rpc_host);
             out->rpc_host = host;
             out->rpc_port = port;
-            break;
-        }
-        case OPT_ANNOUNCE_PORT: {
-            unsigned long v;
-            if(parse_uint(optarg, 65535, &v) != 0) {
-                fprintf(stderr, "easytier-peerdisc: invalid --announce-port '%s'\n", optarg);
-                goto fail;
-            }
-            out->announce_port = (unsigned short)v;
             break;
         }
         case '?':

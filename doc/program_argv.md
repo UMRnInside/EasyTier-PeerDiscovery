@@ -33,7 +33,6 @@ interval) are **not** configurable from the CLI.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--rpc <host:port>` | string | `127.0.0.1:15888` | `easytier-cli` rpc portal; queried for public IP / NAT type / listen port. |
-| `--announce-port <port>` | int | auto | Override the published EasyTier data-plane port (default: RPC `Listener`). |
 
 ## Generic
 
@@ -55,7 +54,7 @@ interval) are **not** configurable from the CLI.
 
 # Fully custom
 ./easytier-peerdisc -n mynet -k mysecret --dht-port 33445 \
-    --announce-interval 600 --rpc 127.0.0.1:15888 --announce-port 11010
+    --announce-interval 600 --rpc 127.0.0.1:15888
 ```
 
 ## Design notes

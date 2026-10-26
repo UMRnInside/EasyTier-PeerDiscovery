@@ -18,6 +18,7 @@ enum {
     OPT_NO_ANNOUNCE,
     OPT_IPV6,
     OPT_NO_IPV6,
+    OPT_QUIC,
     OPT_RPC,
     OPT_VERSION,
 };
@@ -32,6 +33,7 @@ static const struct option long_options[] = {
     {"no-announce", no_argument, NULL, OPT_NO_ANNOUNCE},
     {"ipv6", no_argument, NULL, OPT_IPV6},
     {"no-ipv6", no_argument, NULL, OPT_NO_IPV6},
+    {"quic", no_argument, NULL, OPT_QUIC},
     {"rpc", required_argument, NULL, OPT_RPC},
     {"verbose", no_argument, NULL, 'v'},
     {"help", no_argument, NULL, 'h'},
@@ -102,6 +104,7 @@ void args_print_usage(FILE *out)
             "      --announce-interval <s>  Announce interval, >= %u (default %u)\n"
             "      --no-announce            Query only, never announce\n"
             "      --ipv6 / --no-ipv6       Dual-stack toggle (default on)\n"
+            "      --quic                   Enable QUIC discovery (default off)\n"
             "\n"
             "External endpoint source (easytier-cli RPC):\n"
             "      --rpc <host:port>        easytier-cli rpc portal (default 127.0.0.1:%u)\n"
@@ -196,6 +199,9 @@ int args_parse(int argc, char **argv, peerdisc_args_t *out)
             break;
         case OPT_NO_IPV6:
             out->ipv6 = 0;
+            break;
+        case OPT_QUIC:
+            out->quic = 1;
             break;
         case OPT_RPC: {
             char *host = NULL;

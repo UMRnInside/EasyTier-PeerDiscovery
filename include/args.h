@@ -24,6 +24,7 @@ typedef struct {
     unsigned announce_interval;
     int no_announce;
     int ipv6;
+    int quic;
     char *rpc_host;
     unsigned short rpc_port;
     int verbose;

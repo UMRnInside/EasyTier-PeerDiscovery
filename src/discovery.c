@@ -16,10 +16,12 @@
 
 static char g_network_name[128];
 static infohash_t g_tcp_topic;
+static infohash_t g_udp_topic;
 static infohash_t g_quic_topic;
 static unsigned g_search_interval;
 static int g_ipv6;
 static int g_no_announce;
+static int g_quic;
 
 static time_t g_start_time;
 static time_t g_last_search;
@@ -41,7 +43,9 @@ static void search_topic(const infohash_t *topic, int port, int af)
 static void launch_search(int port, int af)
 {
     search_topic(&g_tcp_topic, port, af);
-    search_topic(&g_quic_topic, port, af);
+    search_topic(&g_udp_topic, port, af);
+    if(g_quic)
+        search_topic(&g_quic_topic, port, af);
 }
 
 static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
@@ -58,7 +62,12 @@ static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
         inet_ntop(AF_INET6, p, addr, sizeof(addr));
         port = (unsigned short)((p[16] << 8) | p[17]);
     }
-    scheme = (memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0) ? "tcp" : "quic";
+    if(memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
+        scheme = "tcp";
+    else if(memcmp(topic->hash, g_udp_topic.hash, INFOHASH_LEN) == 0)
+        scheme = "udp";
+    else
+        scheme = "quic";
     if(af == AF_INET)
         snprintf(url, sizeof(url), "%s://%s:%u", scheme, addr, port);
     else
@@ -85,17 +94,22 @@ static void maybe_announce(time_t now)
 }
 
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
-                   const infohash_t *quic_topic, unsigned search_interval,
-                   int ipv6, int no_announce)
+                   const infohash_t *udp_topic, const infohash_t *quic_topic,
+                   unsigned search_interval, int ipv6, int no_announce,
+                   int quic)
 {
-    if(network_name == NULL || tcp_topic == NULL || quic_topic == NULL)
+    if(network_name == NULL || tcp_topic == NULL || udp_topic == NULL ||
+       (quic && quic_topic == NULL))
         return -1;
     snprintf(g_network_name, sizeof(g_network_name), "%s", network_name);
     g_tcp_topic = *tcp_topic;
-    g_quic_topic = *quic_topic;
+    g_udp_topic = *udp_topic;
+    if(quic)
+        g_quic_topic = *quic_topic;
     g_search_interval = search_interval;
     g_ipv6 = ipv6;
     g_no_announce = no_announce;
+    g_quic = quic;
     g_last_search = 0;
     g_last_found = 0;
     return 0;

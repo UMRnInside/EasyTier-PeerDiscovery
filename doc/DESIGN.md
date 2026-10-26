@@ -32,8 +32,9 @@ infohash = digest[0..20]                                    # first 20 bytes →
   secret after DHT exposure). Fixed as **Argon2id** (RFC 9106 SECOND
   RECOMMENDED: `m=64 MiB, t=3, p=1`, 32-byte output), provided by `libargon2`.
 - Two default namespaces:
-  - `scheme="tcp"` → TCP family (`tcp` / `ws` / `wss`)
-  - `scheme="quic"` → UDP family (`quic` / `wg` / plain `udp`)
+  - `scheme="tcp"` → TCP endpoints
+  - `scheme="udp"` → UDP endpoints
+- Optional `scheme="quic"` namespace, enabled with `--quic`.
 - A multi-protocol node announces to each corresponding infohash.
 - Any change (salt / KDF and params / concat order / scheme / truncation)
   invalidates the whole network; keep it fixed.

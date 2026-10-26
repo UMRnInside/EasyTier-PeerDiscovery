@@ -27,6 +27,7 @@ interval) are **not** configurable from the CLI.
 | `--announce-interval <sec>` | int | `900` | Announce interval in seconds; minimum `300`, rejected below that. |
 | `--no-announce` | flag | off | Force query-only, override automatic announce decisions. |
 | `--ipv6` / `--no-ipv6` | flag | on | Dual-stack toggle (BEP32). |
+| `--quic` | flag | off | Also discover and announce the optional QUIC namespace. |
 
 ## External endpoint source (easytier-cli RPC)
 

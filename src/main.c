@@ -32,13 +32,16 @@ static void on_signal(int sig)
 static int run(const peerdisc_args_t *args)
 {
     infohash_t tcp_topic;
+    infohash_t udp_topic;
     infohash_t quic_topic;
     int http_fd;
     size_t i;
     int rc;
 
     if(infohash_derive(&tcp_topic, args->secret, args->network_name, "tcp") != 0 ||
-       infohash_derive(&quic_topic, args->secret, args->network_name, "quic") != 0) {
+       infohash_derive(&udp_topic, args->secret, args->network_name, "udp") != 0 ||
+       (args->quic &&
+        infohash_derive(&quic_topic, args->secret, args->network_name, "quic") != 0)) {
         fprintf(stderr, "easytier-peerdisc: failed to derive infohash\n");
         return -1;
     }
@@ -75,9 +78,9 @@ static int run(const peerdisc_args_t *args)
         dht_runtime_add_bootstrap(host, port);
     }
 
-    if(discovery_init(args->network_name, &tcp_topic, &quic_topic,
-                       args->announce_interval, args->ipv6,
-                       args->no_announce) != 0) {
+    if(discovery_init(args->network_name, &tcp_topic, &udp_topic,
+                       args->quic ? &quic_topic : NULL, args->announce_interval,
+                       args->ipv6, args->no_announce, args->quic) != 0) {
         fprintf(stderr, "easytier-peerdisc: failed to init discovery\n");
         return -1;
     }

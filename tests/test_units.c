@@ -27,9 +27,13 @@ void test_infohash_scheme_separated(void)
 {
     infohash_t a;
     infohash_t b;
+    infohash_t c;
     TEST_ASSERT_EQUAL_INT(0, infohash_derive(&a, "mysecret", "mynet", "tcp"));
-    TEST_ASSERT_EQUAL_INT(0, infohash_derive(&b, "mysecret", "mynet", "quic"));
+    TEST_ASSERT_EQUAL_INT(0, infohash_derive(&b, "mysecret", "mynet", "udp"));
+    TEST_ASSERT_EQUAL_INT(0, infohash_derive(&c, "mysecret", "mynet", "quic"));
     TEST_ASSERT_TRUE(memcmp(a.hash, b.hash, INFOHASH_LEN) != 0);
+    TEST_ASSERT_TRUE(memcmp(a.hash, c.hash, INFOHASH_LEN) != 0);
+    TEST_ASSERT_TRUE(memcmp(b.hash, c.hash, INFOHASH_LEN) != 0);
 }
 
 void test_endpoint_random_selection(void)

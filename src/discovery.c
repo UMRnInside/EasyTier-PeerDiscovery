@@ -11,7 +11,7 @@
 #include <string.h>
 #include <time.h>
 
-#define MIN_UPTIME_BEFORE_ANNOUNCE 300
+#define INITIAL_ANNOUNCE_DELAY 30
 #define ANNOUNCE_ADDR_LEN 64
 #define QUERY_TCP4 (1u << 0)
 #define QUERY_UDP4 (1u << 1)
@@ -33,6 +33,7 @@ static time_t g_start_time;
 static time_t g_last_search;
 static int g_last_found;
 static unsigned g_query_pending;
+static int g_announce_checked;
 
 static unsigned short url_port(const char *url)
 {
@@ -77,6 +78,7 @@ static void start_query(const infohash_t *topic, int af, unsigned bit)
 static void start_query_round(time_t now)
 {
     g_last_found = 0;
+    g_announce_checked = 0;
     g_query_pending = QUERY_TCP4 | QUERY_UDP4;
     if(g_quic)
         g_query_pending |= QUERY_QUIC4;
@@ -132,10 +134,11 @@ static void maybe_announce(time_t now)
     int nat_ok = 0;
     unsigned short aport;
 
-    if(g_no_announce || g_last_found)
+    if(g_no_announce || g_last_found || g_announce_checked)
         return;
-    if(now - g_start_time < MIN_UPTIME_BEFORE_ANNOUNCE)
+    if(now - g_start_time < INITIAL_ANNOUNCE_DELAY)
         return;
+    g_announce_checked = 1;
     if(easytier_rpc_get_endpoint(url, sizeof(url), &nat_ok) != 0 || !nat_ok)
         return;
     aport = url_port(url);
@@ -166,6 +169,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_last_search = 0;
     g_last_found = 0;
     g_query_pending = 0;
+    g_announce_checked = 0;
     return 0;
 }
 
@@ -236,6 +240,8 @@ void discovery_periodic(void *closure)
     (void)closure;
 
     now = time(NULL);
+    if(g_query_pending == 0)
+        maybe_announce(now);
     if(g_query_pending != 0 || now - g_last_search < (time_t)g_search_interval)
         return;
 

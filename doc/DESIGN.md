@@ -59,7 +59,7 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - **On-demand announce** (`dht_search(..., port!=0, ...)`) only when:
   1. every enabled protocol and address-family search in this round has
      completed without returning a peer;
-  2. NAT is good (public / full-cone, via STUN) and uptime ≥ 5 minutes.
+  2. NAT is good (public / full-cone, via STUN) and uptime ≥ 30 seconds.
 - LAN / poor-NAT nodes do **not** announce; they only query and join other
   public peers as clients, relying on internal OSPF to spread (avoid zombie
   entries).

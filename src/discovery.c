@@ -38,6 +38,16 @@ static unsigned g_query_pending;
 static int g_query_failed;
 static int g_announce_checked;
 
+typedef struct {
+    unsigned char address[16];
+    unsigned short port;
+    int valid;
+} self_announcement_t;
+
+static self_announcement_t g_self_announcements[6];
+
+static int self_announcement_index(const infohash_t *topic, int af);
+
 static const char *topic_scheme(const infohash_t *topic)
 {
     if(memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
@@ -75,6 +85,7 @@ static int search_topic(const infohash_t *topic, int port, int af)
 }
 
 static int announce_topic(const infohash_t *topic, unsigned short port, int af,
+                          const char *public_address,
                           const char *ineligible_reason)
 {
     if(port == 0) {
@@ -92,7 +103,19 @@ static int announce_topic(const infohash_t *topic, unsigned short port, int af,
     if(g_verbose)
         printf("easytier-peerdisc: announce yes: %s %s eligible, port %u\n",
                topic_scheme(topic), address_family_name(af), port);
-    search_topic(topic, port, af);
+    if(search_topic(topic, port, af) >= 0) {
+        int index = self_announcement_index(topic, af);
+        self_announcement_t *announcement;
+
+        if(index >= 0) {
+            announcement = &g_self_announcements[index];
+            if(public_address != NULL && public_address[0] != '\0' &&
+               inet_pton(af, public_address, announcement->address) == 1) {
+                announcement->port = port;
+                announcement->valid = 1;
+            }
+        }
+    }
     return 1;
 }
 
@@ -107,6 +130,35 @@ static unsigned query_bit(const unsigned char *info_hash, int af)
     if(g_quic && memcmp(info_hash, g_quic_topic.hash, INFOHASH_LEN) == 0)
         return 1u << (family_offset + 2u);
     return 0;
+}
+
+static int self_announcement_index(const infohash_t *topic, int af)
+{
+    int index = af == AF_INET6 ? 3 : 0;
+
+    if(memcmp(topic->hash, g_tcp_topic.hash, INFOHASH_LEN) == 0)
+        return index;
+    if(memcmp(topic->hash, g_udp_topic.hash, INFOHASH_LEN) == 0)
+        return index + 1;
+    if(g_quic && memcmp(topic->hash, g_quic_topic.hash, INFOHASH_LEN) == 0)
+        return index + 2;
+    return -1;
+}
+
+static int is_self_announcement(const infohash_t *topic, int af,
+                                const unsigned char *address, unsigned short port)
+{
+    const self_announcement_t *announcement;
+    size_t address_len;
+    int index = self_announcement_index(topic, af);
+
+    if(index < 0)
+        return 0;
+    announcement = &g_self_announcements[index];
+    if(!announcement->valid || announcement->port != port)
+        return 0;
+    address_len = af == AF_INET6 ? 16 : 4;
+    return memcmp(address, announcement->address, address_len) == 0;
 }
 
 static void start_query(const infohash_t *topic, int af, unsigned bit)
@@ -146,7 +198,7 @@ static void start_query_round(time_t now)
     g_last_search = now;
 }
 
-static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
+static int add_peer(int af, const unsigned char *p, const infohash_t *topic)
 {
     char addr[ANNOUNCE_ADDR_LEN];
     const char *scheme;
@@ -165,10 +217,27 @@ static void add_peer(int af, const unsigned char *p, const infohash_t *topic)
         snprintf(url, sizeof(url), "%s://%s:%u", scheme, addr, port);
     else
         snprintf(url, sizeof(url), "%s://[%s]:%u", scheme, addr, port);
+    if(is_self_announcement(topic, af, p, port)) {
+        if(g_verbose)
+            printf("easytier-peerdisc: dht query %s %s found %s "
+                   "(ignored:peer-is-myself)\n",
+                   scheme, address_family_name(af), url);
+        return 0;
+    }
     endpoint_add(url);
     if(g_verbose)
         printf("easytier-peerdisc: dht query %s %s found %s\n",
                scheme, address_family_name(af), url);
+    return 1;
+}
+
+static void mark_peer_found(unsigned bit)
+{
+    if((g_query_pending & bit) == 0)
+        return;
+    if(g_verbose && !g_last_found)
+        printf("easytier-peerdisc: announce no: peers found in current query round\n");
+    g_last_found = 1;
 }
 
 static void maybe_announce(time_t now)
@@ -194,17 +263,23 @@ static void maybe_announce(time_t now)
     udp4_reason = easytier_ipv4_nat_eligible(status.udp_nat,
                                              g_assume_good_ipv4_nat) ?
                   NULL : "UDP NAT is not eligible";
-    announce_topic(&g_tcp_topic, status.tcp4_port, AF_INET, tcp4_reason);
-    announce_topic(&g_udp_topic, status.udp4_port, AF_INET, udp4_reason);
+    memset(g_self_announcements, 0, sizeof(g_self_announcements));
+    announce_topic(&g_tcp_topic, status.tcp4_port, AF_INET, status.public_ipv4,
+                   tcp4_reason);
+    announce_topic(&g_udp_topic, status.udp4_port, AF_INET, status.public_ipv4,
+                   udp4_reason);
     if(g_quic)
-        announce_topic(&g_quic_topic, status.quic4_port, AF_INET, udp4_reason);
+        announce_topic(&g_quic_topic, status.quic4_port, AF_INET, status.public_ipv4,
+                       udp4_reason);
 
     if(!g_ipv6)
         return;
     ipv6_reason = status.public_ipv6[0] != '\0' ? NULL :
                   "public IPv6 address unavailable";
-    announce_topic(&g_tcp_topic, status.tcp6_port, AF_INET6, ipv6_reason);
-    announce_topic(&g_udp_topic, status.udp6_port, AF_INET6, ipv6_reason);
+    announce_topic(&g_tcp_topic, status.tcp6_port, AF_INET6, status.public_ipv6,
+                   ipv6_reason);
+    announce_topic(&g_udp_topic, status.udp6_port, AF_INET6, status.public_ipv6,
+                   ipv6_reason);
 }
 
 int discovery_init(const char *network_name, const infohash_t *tcp_topic,
@@ -231,6 +306,7 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_query_pending = 0;
     g_query_failed = 0;
     g_announce_checked = 0;
+    memset(g_self_announcements, 0, sizeof(g_self_announcements));
     return 0;
 }
 
@@ -265,26 +341,18 @@ void discovery_dht_callback(void *closure, int event,
     switch(event) {
     case DHT_EVENT_VALUES:
         bit = query_bit(info_hash, AF_INET);
-        if((g_query_pending & bit) != 0) {
-            if(g_verbose && !g_last_found)
-                printf("easytier-peerdisc: announce no: peers found in current query round\n");
-            g_last_found = 1;
-        }
         for(i = 0; i + 6 <= data_len; i += 6) {
             p = (const unsigned char *)data + i;
-            add_peer(AF_INET, p, (const infohash_t *)info_hash);
+            if(add_peer(AF_INET, p, (const infohash_t *)info_hash))
+                mark_peer_found(bit);
         }
         break;
     case DHT_EVENT_VALUES6:
         bit = query_bit(info_hash, AF_INET6);
-        if((g_query_pending & bit) != 0) {
-            if(g_verbose && !g_last_found)
-                printf("easytier-peerdisc: announce no: peers found in current query round\n");
-            g_last_found = 1;
-        }
         for(i = 0; i + 18 <= data_len; i += 18) {
             p = (const unsigned char *)data + i;
-            add_peer(AF_INET6, p, (const infohash_t *)info_hash);
+            if(add_peer(AF_INET6, p, (const infohash_t *)info_hash))
+                mark_peer_found(bit);
         }
         break;
     case DHT_EVENT_SEARCH_DONE:

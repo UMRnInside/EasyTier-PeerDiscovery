@@ -60,7 +60,7 @@ subsequent SHA-256 topic derivation.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `-v, --verbose` | flag | off | Log Mainline DHT query infohashes and announce ports, peer results, protocol/address-family search completion, NAT query results, per-protocol/address-family announce decisions, and DHT state load/save outcomes. NAT diagnostics parse `easytier-cli -p <target> --output json node` and report TCP/UDP NAT types, public IPv4/IPv6 addresses, and TCP/UDP/QUIC listeners. Missing fields are marked unavailable. The JSON `config` field is ignored and never logged. Announce logs describe local decisions and search submission, not remote acceptance. |
+| `-v, --verbose` | flag | off | Log Mainline DHT query infohashes and announce ports, peer results, protocol/address-family search completion, NAT query results, per-protocol/address-family announce decisions, and DHT state load/save outcomes. A returned endpoint matching this process's announced protocol, address family, public address, and port is logged as `(ignored:peer-is-myself)` and is not published to EasyTier. NAT diagnostics parse `easytier-cli -p <target> --output json node` and report TCP/UDP NAT types, public IPv4/IPv6 addresses, and TCP/UDP/QUIC listeners. Missing fields are marked unavailable. The JSON `config` field is ignored and never logged. Announce logs describe local decisions and search submission, not remote acceptance. |
 | `-h, --help` | flag | — | Usage. |
 | `--version` | flag | — | Version number. |
 

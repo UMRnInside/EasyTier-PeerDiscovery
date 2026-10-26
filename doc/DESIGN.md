@@ -47,8 +47,9 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
   (attached automatically by EasyTier's `CoreManualEndpointResolver`, see
   `easytier-core/src/connectivity/manual/discovery/implementation.rs:236`).
 - **Response**: HTTP `200`, body **one connector URL per line**
-  (`tcp://ip:port` or `quic://ip:port`). EasyTier picks one valid URL at random
-  (`resolve_http_body`); blank lines and multiple lines are allowed.
+  (`tcp://ip:port`, `udp://ip:port`, or optional `quic://ip:port`). EasyTier
+  picks one valid URL at random (`resolve_http_body`); blank lines and multiple
+  lines are allowed.
 - EasyTier requests this endpoint only on **initial connect and reconnect**
   (not periodic polling); returning a currently-online member is enough,
   no long-lived connections needed.
@@ -59,13 +60,16 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 - **On-demand announce** (`dht_search(..., port!=0, ...)`) only when:
   1. every enabled protocol and address-family search in this round has
      completed without returning a peer;
-  2. NAT is good (public / full-cone, via STUN) and uptime ≥ 30 seconds.
+  2. `easytier-cli node` reports `Public` or `FriendlyNAT`, a public address,
+     a non-ring listener, and uptime ≥ 30 seconds. Missing NAT status is not
+     eligible for announce.
 - LAN / poor-NAT nodes do **not** announce; they only query and join other
   public peers as clients, relying on internal OSPF to spread (avoid zombie
   entries).
-- The announced content is the **EasyTier connectable endpoint**
-  (`tcp://<publicIP>:<listenPort>`), **not** this program's own DHT UDP port.
-  Public IP / NAT type / listen port come from `easytier-cli node` (RPC portal).
+- The announced port is the **EasyTier listener port**, not this program's own
+  DHT UDP port. Mainline DHT derives the address from the IPv4 or IPv6 request
+  source. Public IP / NAT type / listen port eligibility comes from
+  `easytier-cli node` (RPC portal).
 - Announce interval defaults to 15 minutes (keeps the entry refreshed at least
   twice within Mainline's ~30-min–2-hour reaping window).
 

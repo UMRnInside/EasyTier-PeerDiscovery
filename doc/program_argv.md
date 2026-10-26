@@ -2,8 +2,8 @@
 
 The standalone discovery service is driven entirely by CLI arguments. Options
 use `getopt_long` style (`--key value`); short aliases are provided where
-natural. Frozen protocol rules (infohash derivation, HTTP contract, announce
-interval) are **not** configurable from the CLI.
+natural. Frozen protocol rules such as infohash derivation and the HTTP
+contract are **not** configurable from the CLI.
 
 ## Core (required)
 

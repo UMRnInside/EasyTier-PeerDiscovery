@@ -23,7 +23,7 @@ Point EasyTier at its HTTP endpoint:
 
 ```sh
 easytier-core -n <network-name> -k <secret> \
-    -p http://127.0.0.1:11008/endpoint
+    -p http://localhost:11008/endpoint
 ```
 
 See `easytier-peerdisc --help` and [`doc/program_argv.md`](doc/program_argv.md)

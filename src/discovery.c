@@ -33,7 +33,6 @@ static int g_verbose;
 
 static time_t g_start_time;
 static time_t g_last_search;
-static int g_last_found;
 static unsigned g_query_pending;
 static int g_query_failed;
 static int g_announce_checked;
@@ -173,7 +172,6 @@ static void start_query(const infohash_t *topic, int af, unsigned bit)
 
 static void start_query_round(time_t now)
 {
-    g_last_found = 0;
     g_query_failed = 0;
     g_announce_checked = 0;
     g_query_pending = QUERY_TCP4 | QUERY_UDP4;
@@ -231,15 +229,6 @@ static int add_peer(int af, const unsigned char *p, const infohash_t *topic)
     return 1;
 }
 
-static void mark_peer_found(unsigned bit)
-{
-    if((g_query_pending & bit) == 0)
-        return;
-    if(g_verbose && !g_last_found)
-        printf("easytier-peerdisc: announce no: peers found in current query round\n");
-    g_last_found = 1;
-}
-
 static void maybe_announce(time_t now)
 {
     easytier_network_status_t status;
@@ -247,7 +236,7 @@ static void maybe_announce(time_t now)
     const char *udp4_reason;
     const char *ipv6_reason;
 
-    if(g_no_announce || g_last_found || g_query_failed || g_announce_checked)
+    if(g_no_announce || g_query_failed || g_announce_checked)
         return;
     if(now - g_start_time < INITIAL_ANNOUNCE_DELAY)
         return;
@@ -302,7 +291,6 @@ int discovery_init(const char *network_name, const infohash_t *tcp_topic,
     g_assume_good_ipv4_nat = assume_good_ipv4_nat;
     g_verbose = verbose;
     g_last_search = 0;
-    g_last_found = 0;
     g_query_pending = 0;
     g_query_failed = 0;
     g_announce_checked = 0;
@@ -315,7 +303,7 @@ int discovery_start(void)
     if(g_verbose) {
         printf("easytier-peerdisc: announce %s\n",
                g_no_announce ? "no: disabled by --no-announce" :
-               "pending: query results and NAT eligibility required, initial delay 30 seconds");
+               "pending: NAT eligibility required, initial delay 30 seconds");
         if(g_assume_good_ipv4_nat)
             printf("easytier-peerdisc: IPv4 NAT override enabled: treating TCP and UDP NAT as OpenInternet\n");
     }
@@ -343,16 +331,14 @@ void discovery_dht_callback(void *closure, int event,
         bit = query_bit(info_hash, AF_INET);
         for(i = 0; i + 6 <= data_len; i += 6) {
             p = (const unsigned char *)data + i;
-            if(add_peer(AF_INET, p, (const infohash_t *)info_hash))
-                mark_peer_found(bit);
+            add_peer(AF_INET, p, (const infohash_t *)info_hash);
         }
         break;
     case DHT_EVENT_VALUES6:
         bit = query_bit(info_hash, AF_INET6);
         for(i = 0; i + 18 <= data_len; i += 18) {
             p = (const unsigned char *)data + i;
-            if(add_peer(AF_INET6, p, (const infohash_t *)info_hash))
-                mark_peer_found(bit);
+            add_peer(AF_INET6, p, (const infohash_t *)info_hash);
         }
         break;
     case DHT_EVENT_SEARCH_DONE:

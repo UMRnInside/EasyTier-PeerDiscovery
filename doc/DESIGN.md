@@ -62,9 +62,7 @@ Contract for EasyTier `-p http://<host>:<port>/endpoint`:
 
 - **No announce by default**: `dht_search(infohash, port=0, af, cb)` only queries.
 - **On-demand announce** (`dht_search(..., port!=0, ...)`) only when:
-  1. every enabled protocol and address-family search in this round has
-     completed without returning a peer;
-  2. uptime is at least 30 seconds and `easytier-cli --output json node`
+  1. uptime is at least 30 seconds and `easytier-cli --output json node`
       reports the information required for that protocol and address family.
       IPv4 TCP uses the TCP NAT type and TCP listener; IPv4 UDP uses the UDP
       NAT type and UDP listener. Eligible NAT types are `Public`,
